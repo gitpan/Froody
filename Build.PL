@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
+use lib 'mbk';
 use Module::Build::Kwalitee;
 Module::Build::Kwalitee->new(
   module_name => 'Froody',
@@ -34,6 +35,9 @@ Module::Build::Kwalitee->new(
     'Test::XML' => 0,
     'File::Find::Rule' => 0,
   },
+  script_files => [qw(
+    bin/froody
+  )],
   create_readme => 1,
   create_makefile_pl => 'passthrough',
   recursive_test_files => 1,

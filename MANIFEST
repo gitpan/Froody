@@ -1,4 +1,7 @@
 Build.PL
+Changes
+NINJA
+README
 MANIFEST.SKIP
 Makefile.PL
 bin/froody.cgi

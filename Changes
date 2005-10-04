@@ -1,0 +1,7 @@
+42.001:
+  * Fix to Build.PL
+  -- Stig Brautaset <stig@fotango.com>
+
+42:
+  * Initial release
+  -- Stig Brautaset <stig@fotango.com>
