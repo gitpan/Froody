@@ -8,17 +8,16 @@
 use strict;
 use warnings;
 
-use FindBin;
-use File::Spec::Functions;
+use FindBin qw( $Bin );
+use Test::More;
+eval q/use File::Find::Rule; 1/ 
+  or plan skip_all => 'File::Find::Rule not installed';
 
-my @files;
+my @files = 
+    grep { !/00\d(compile|strict|warnings|pod|uselib).t/ }
+    File::Find::Rule->file()->name( '*.t' )->in( $Bin );
 
-BEGIN {
-  my $path = catfile($FindBin::Bin,"*.t");
-  @files = grep {!/00/ } glob($path);
-}
-
-use Test::More tests => scalar(@files);
+plan tests => scalar @files;
 
 FISH:
 foreach my $filename (@files)
