@@ -5,19 +5,17 @@
 
 use strict;
 use warnings;
-our @test;
 
 use Test::More;
-eval "use File::Find::Rule; 1;"
-	or plan skip_all => 'File::Find::Rule not installed';
-	
-@test = File::Find::Rule->file()->name('*.t')->in('t');
+use Module::Build::Kwalitee::Util;
 
-plan tests => scalar @test;
+my @files = test_files();
 
-foreach my $test ( @test ) {
+plan tests => scalar @files;
+
+foreach my $test ( @files ) {
   my $fh;
-  local $/ = undef;
+  local $/;
   open $fh, $test;
   my $file = <$fh>;
   if ($file =~ m/\nuse\s+lib(.*?);/m) {

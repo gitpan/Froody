@@ -39,6 +39,6 @@ Module::Build::Kwalitee->new(
     bin/froody
   )],
   create_readme => 1,
-  create_makefile_pl => 'passthrough',
+  create_makefile_pl => 'traditional',
   recursive_test_files => 1,
 )->create_build_script();

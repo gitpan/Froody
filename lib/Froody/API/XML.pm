@@ -198,6 +198,10 @@ sub _arguments {
       { 'attribute "'.$name.'" requires an array of Froody::Upload objects' =>
         sub { !grep { !UNIVERSAL::isa($_, 'Froody::Upload') } @{$_[0]} } };
     }
+    if ($type eq 'remaining') {
+      $arguments{$name}{optional} = 1;
+      $arguments{$name}{type} = HASHREF;
+    }
   }
 
   return \%arguments;

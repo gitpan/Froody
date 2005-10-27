@@ -59,9 +59,8 @@ t/lib/Testproject/API.pm
 t/implementation.t
 t/api.t
 t/reflection.t
-t/001strict.t
 t/004uselib.t
-t/002warnings.t
+t/001pragmas.t
 t/000compile.t
 t/003pod.t
 t/rsp_perlds.t
@@ -86,4 +85,8 @@ META.yml
 MANIFEST
 README
 MANIFEST
+examples/corelist/Corelist.pm
+examples/time/Time.pm
+TODO
 mbk/Module/Build/Kwalitee.pm
+mbk/Module/Build/Kwalitee/Util.pm

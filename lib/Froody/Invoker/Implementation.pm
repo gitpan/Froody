@@ -102,15 +102,23 @@ sub pre_process {
           }
       }
   }
-  $self->verify_params( $method->arguments, $params );
+  $self->verify_params( $spec, $params );
 }
 
 sub verify_params {
   my ($self, $spec, $params) = @_;
 
-  # filter out those not in spec
-  for (keys %$params) {
-      delete $params->{$_}, unless exists $spec->{$_};
+  # is there a special 'remainder' type?
+  my ($remainder) = grep { $spec->{$_}{usertype} eq 'remaining' } keys %$spec;
+
+  # filter out those not in spec, adding to the 'remainder' param, if
+  # present.
+  for (grep { !exists $spec->{$_} } keys %$params) {
+    if ($remainder) {
+      $params->{$remainder}{$_} = delete $params->{$_};
+    } else {
+      delete $params->{$_};
+    }
   }
 
   local $SIG{__DIE__} = sub {

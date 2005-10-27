@@ -1,6 +1,6 @@
 ---
 name: Froody
-version: 42.002
+version: 42.003
 author:
   - |-
     You can reach the current maintainers by emailing us at C<cpan@fotango.com>,
@@ -37,7 +37,7 @@ build_requires:
 provides:
   Froody:
     file: lib/Froody.pm
-    version: 42.002
+    version: 42.003
   Froody::API:
     file: lib/Froody/API.pm
   Froody::API::Reflection:

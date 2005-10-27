@@ -5,21 +5,16 @@
 use strict;
 use warnings;
 
-
 use Test::More;
-eval q(
-	use File::Find::Rule;
-	use Test::Builder;
-	1;
-) or plan skip_all => 'Necessary modules not installed';
+use Module::Build::Kwalitee::Util;
 
-my @classes = map { 
-	my $x = $_;
-	$x =~ s|^lib/||;
-    $x =~ s|/|::|g;
-    $x =~ s|\.pm$||;
-    $x;
-} File::Find::Rule->file()->name( '[A-Z]*.pm' )->in( 'lib' );
+eval q/use Test::Builder; 1;/
+  or plan skip_all => 'Necessary modules not installed';
+
+my @classes = 
+  map  { path_to_package($_) }
+  grep { !/00\d[a-z]+.pm/ }
+  module_files();
 
 plan tests => scalar @classes;
 

@@ -1,3 +1,9 @@
+42.003:
+  * Fix corelist example so it returns serveradmin stuff
+  * added a 'remaining' argument type that holds all non-declared arguments
+    passed to the method
+  * added examples to MANIFEST (oops)
+
 42.002:
   * Fix broken meta-test (t/t.t)
 

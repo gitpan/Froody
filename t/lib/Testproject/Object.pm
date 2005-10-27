@@ -41,4 +41,9 @@ sub texttest {
     return { next => 100, blah => "foo\nhate\n"};
 }
 
+sub params {
+  my ($invoker, $args) = @_;
+  return scalar keys %{ $args->{the_rest} };
+}
+
 1;

@@ -62,6 +62,16 @@ sub xml {
         </ranges>
       </response>
     </method>
+
+    <method name='testproject.object.params' needslogin='0'>
+      <arguments>
+        <argument name="the_rest" type="remaining" />
+      </arguments>
+      <response>
+        <count>4</count>
+      </response>
+    </method>
+    
     
   </methods>
 

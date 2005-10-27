@@ -14,7 +14,7 @@ use Data::Dumper;
 use Term::ANSIColor qw(:constants);
 $Term::ANSIColor::AUTORESET = 1;
 
-use Test::More tests => 29;
+use Test::More tests => 31;
 use Test::Exception;
 
 # this is where we keep our modules
@@ -30,7 +30,7 @@ use_ok ('Testproject::API');
 
   # Check we got our methods back
   my @methods = grep { blessed($_) && $_->isa("Froody::Method") } @stuff;
-  is(@methods, 7, "got seven methods back from the api");
+  is(@methods, 8, "got eight methods back from the api");
   my $methods = { map { $_->full_name => 1 } @methods };
   is_deeply($methods, { map { $_ => 1 } qw(
       testproject.object.method
@@ -40,6 +40,7 @@ use_ok ('Testproject::API');
       testproject.object.extra
       testproject.object.range
       testproject.object.range2
+      testproject.object.params
   )},"got the right method names")
     or diag(Dumper $methods);
     
@@ -71,7 +72,8 @@ my $texttest = $repos->get_method('testproject.object.texttest');
 my $extra    = $repos->get_method('testproject.object.extra');
 my $range    = $repos->get_method('testproject.object.range');
 my $range2   = $repos->get_method('testproject.object.range2');
-foreach ($text, $sum, $texttest, $extra, $range, $range2)
+my $params   = $repos->get_method('testproject.object.params');
+foreach ($text, $sum, $texttest, $extra, $range, $range2, $params)
  { isa_ok($_, 'Froody::Method') }
 
 dies_ok {
@@ -108,6 +110,9 @@ is_deeply($range2->call({ base => 90, offset => 10 })->as_perlds->content,
 # XXX: test the logger warnings!
 is_deeply($extra->call({})->as_perlds->content,
     { name => 'range' }, "wibble");
+
+is_deeply($params->call( { bob => 'baz', fred => "wobble" } )
+  ->as_perlds->content, { name => "count", value => 2 }, "remaining params passed ok");
 
 #### test the errortypes #####
 

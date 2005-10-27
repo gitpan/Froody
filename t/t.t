@@ -14,7 +14,7 @@ eval q/use File::Find::Rule; 1/
   or plan skip_all => 'File::Find::Rule not installed';
 
 my @files = 
-    grep { !/00\d(compile|strict|warnings|pod|uselib).t/ }
+    grep { !/00\d(compile|strict|warnings|pod|uselib|pragmas).t$/ }
     File::Find::Rule->file()->name( '*.t' )->in( $Bin );
 
 plan tests => scalar @files;

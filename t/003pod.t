@@ -3,18 +3,15 @@ use warnings;
 use strict;
 
 use Test::More;
+use Module::Build::Kwalitee::Util;
 
-
-
-use Test::More;
 eval q(
-	use File::Find::Rule;
 	use Test::Pod;
 	use Pod::Coverage::CountParents;
 	1;
 ) or plan skip_all => 'Necessary modules not installed';
 
-my @files = File::Find::Rule->file()->name('[A-Z]*.pm', '*.pod')->in('lib');
+my @files = (module_files(), pod_files());
 
 plan tests => ( scalar @files * 3 ) + 1;
 
@@ -37,10 +34,7 @@ for my $file (@files) {
     }
 
     # work out the package that is
-    my $package = $file;
-    $package =~ s!.*lib/!!;
-    $package =~ s!/!::!g;
-    $package =~ s!\.pm$!!;
+    my $package = path_to_package($file);
 
     # load the package
     my $pc = Pod::Coverage::CountParents->new(
