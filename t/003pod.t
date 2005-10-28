@@ -1,9 +1,8 @@
 #!perl
 use warnings;
 use strict;
-
 use Test::More;
-use Module::Build::Kwalitee::Util;
+use File::Find::Rule;
 
 eval q(
 	use Test::Pod;
@@ -11,8 +10,7 @@ eval q(
 	1;
 ) or plan skip_all => 'Necessary modules not installed';
 
-my @files = (module_files(), pod_files());
-
+my @files = File::Find::Rule->file()->name('*.pm', '*.pod')->in('lib');
 plan tests => ( scalar @files * 3 ) + 1;
 
 my $total_coverage;
@@ -34,7 +32,12 @@ for my $file (@files) {
     }
 
     # work out the package that is
-    my $package = path_to_package($file);
+    my $package = $file;
+    for ($package) {
+    s|.*lib/||;
+    s|/|::|g;
+    s|\.pm$||;
+  }
 
     # load the package
     my $pc = Pod::Coverage::CountParents->new(
@@ -66,3 +69,4 @@ for my $file (@files) {
 my $average_coverage = $total_coverage / $total_files;
 ok( $average_coverage > 0.98,
   "Average POD coverage ". ( $average_coverage * 100 )."% > 98%" );
+

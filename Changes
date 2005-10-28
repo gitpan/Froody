@@ -1,3 +1,7 @@
+42.004:
+  * regenerate dist with latest Module::Build::Kwalitee to allow
+    building with MakeMaker 
+
 42.003:
   * Fix corelist example so it returns serveradmin stuff
   * added a 'remaining' argument type that holds all non-declared arguments

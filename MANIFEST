@@ -89,4 +89,3 @@ examples/corelist/Corelist.pm
 examples/time/Time.pm
 TODO
 mbk/Module/Build/Kwalitee.pm
-mbk/Module/Build/Kwalitee/Util.pm

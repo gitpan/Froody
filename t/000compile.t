@@ -4,17 +4,16 @@
 
 use strict;
 use warnings;
-
 use Test::More;
-use Module::Build::Kwalitee::Util;
+use File::Find::Rule;
 
 eval q/use Test::Builder; 1;/
   or plan skip_all => 'Necessary modules not installed';
-
+  
 my @classes = 
-  map  { path_to_package($_) }
+  map  { path_to_pkg($_) }
   grep { !/00\d[a-z]+.pm/ }
-  module_files();
+  File::Find::Rule->file()->name('*.pm')->in('lib');
 
 plan tests => scalar @classes;
 
@@ -35,3 +34,13 @@ foreach my $class ( @classes ) {
 
   $test->current_test( $test->current_test + 1 );
 }
+
+sub path_to_pkg ($) {
+  for (shift) {
+    s|.*lib/||;
+    s|/|::|g;
+    s|\.pm$||;
+    return $_;
+  }
+}
+

@@ -5,11 +5,10 @@
 
 use strict;
 use warnings;
-
 use Test::More;
-use Module::Build::Kwalitee::Util;
+use File::Find::Rule;
 
-my @files = test_files();
+my @files = File::Find::Rule->file()->name('*.t')->in('t');
 
 plan tests => scalar @files;
 
