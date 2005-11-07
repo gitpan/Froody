@@ -207,6 +207,7 @@ sub dispatch {
   my $repo = $self->repository;
 
   my $method;
+  my $method_name;
   my $response = eval {
   
     # make sure we're being dispatched with the right args
@@ -236,6 +237,8 @@ sub dispatch {
   # that it was a successful pass
   if ($@)
   {     
+     $logger->warn($method ? "An error occurred while executing \"".$method->full_name."\": $@" : $@);
+              
      # simply rethrow the error if we're passing through or if we're
      # throwing and it's already a Froody::Error
      my $is_froody_error = blessed($@) && $@->isa("Froody::Error");

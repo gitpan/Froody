@@ -1,3 +1,7 @@
+42.005:
+  * Allow underscores in method names
+  * Allow method names with no dots
+
 42.004:
   * regenerate dist with latest Module::Build::Kwalitee to allow
     building with MakeMaker 

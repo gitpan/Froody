@@ -146,7 +146,7 @@ sub full_name
   # HACKERS: Note, if you change this, you'll need to change the
   # code in C<match_to_regex> above
   Froody::Error->throw("perl.methodcall.param", "Invalid Method name '$name'")
-    unless (($name =~ tr/././) > 1) && $name !~ m/[^a-zA-Z.0-9]/; 
+    unless $name !~ m/[^a-zA-Z.0-9_]/; 
 
   $self->{full_name} = $name;
   return $self;

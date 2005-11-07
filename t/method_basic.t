@@ -11,7 +11,7 @@ use warnings;
 use Test::Exception;
 
 # start the tests
-use Test::More tests => 29;
+use Test::More tests => 30;
 
 use Froody::Error qw(err);
 
@@ -22,24 +22,26 @@ isa_ok($method, "Froody::Method", "constructor test");
 #####
 # check setting the full name
 
-throws_ok {
+lives_ok {
   $method->full_name("fred");
-} "Froody::Error", "bad full name, not enough dots";
-ok(err("perl.methodcall.param"), "correct error type") or diag $@;;
+} "we now allow no dots";
 
 throws_ok {
+  $method->full_name("fred,bar");
+} "Froody::Error", "illegal chars in full name";
+ok(err("perl.methodcall.param"), "correct error type") or diag $@;
+
+lives_ok {
   $method->full_name("fred.wilma");
-} "Froody::Error", "bad full name, not enough dots 2";
-ok(err("perl.methodcall.param"), "correct error type") or diag $@;;
+} "we now allow less dots";
 
 lives_ok {
   $method->full_name("fred.wilma.BAR");
 } "upper and lower case chars allowed";
 
-# we now allow this
-# throws_ok {
-#   $method->full_name("fred.wilma.bar99");
-# } "Froody::Error::Method", "bad full name, numbers";
+lives_ok {
+  $method->full_name("fred.wilma_BAR99");
+} "upper and lower case chars, numbers and underscores allowed";
 
 lives_ok {
   $method->full_name("fred.wilma.bar");

@@ -142,7 +142,7 @@ is_deeply($method->structure, {
 
 throws_ok {
 ($method) = Froody::API::XML->load_spec(_spec(<<XML));
-<method name="text.method" needslogin="0">
+<method name="text,method" needslogin="0">
   <arguments></arguments>
   <description></description>
   <response>
