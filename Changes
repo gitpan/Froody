@@ -1,3 +1,18 @@
+42.006
+  * validate terse data structures properly whether they are 
+    actually passed over http as XML or simply returned directly
+  * add support for returning JSON instead of XML
+  * implement a pluggable architecture, useful for sessions management etc
+  * added froody.reflection.getSpecification
+  * lazy loading of method specs
+  * added pluggable (and chainable) argument validators
+  * added tests for weird edge cases
+  * fixed a few spelling errors in errors
+
+NOTE: Froody is still in a bit of flux, as development is driving
+refactorings and new features.
+
+
 42.005:
   * Allow underscores in method names
   * Allow method names with no dots

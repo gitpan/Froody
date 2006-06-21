@@ -34,6 +34,23 @@ These are get/set accessors on the instance.
 
 =back
 
+=head2 EASY CONSTRUCTOR
+
+=over
+
+=item from_file( filename )
+
+=cut
+
+sub from_file {
+  my $class = shift;
+  my $filename = shift;
+  open my $fh, $filename or die "Can't open $filename: $!";
+  return $class->new->fh($fh)->filename($filename);
+}
+
+=back
+
 =head1 BUGS
 
 None known.

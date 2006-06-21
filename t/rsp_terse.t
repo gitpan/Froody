@@ -9,11 +9,10 @@
 use strict;
 use warnings;
 
-use Params::Validate qw(SCALAR);
-
 # Test modules we might want to use:
 # use Test::DatabaseRow;
 use Test::Exception;
+use Devel::Peek;
 
 # start the tests
 use Test::More tests => 9;
@@ -41,8 +40,7 @@ $method->arguments({ 'group' => {
    multiple => 0, 
    optional => 0,
    doc => 'The Group Name',
-   usertype => 'scalar', #user defined type label.
-   type => SCALAR, #A type, as defined by L<Params::Validate>
+   type => 'scalar', #user defined type label.
 }});
 
 my $terse = Froody::Response::Terse->new();

@@ -30,6 +30,8 @@ Froody::Response::PerlDS - create a response from a Perl data structure
   
 =head1 DESCRIPTION
 
+DEPRECATED!!!! Please use Froody::Response::Terse
+
 This is a simple type of response that allows you to quickly create
 responses from Perl data structures.
 
@@ -297,7 +299,6 @@ sub Froody::Response::as_perlds
 sub _recurse_to_ds
 {
   my $node = shift;
-
   return {} unless $node;
   
   # work out the text content of this node

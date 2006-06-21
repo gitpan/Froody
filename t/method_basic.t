@@ -11,7 +11,7 @@ use warnings;
 use Test::Exception;
 
 # start the tests
-use Test::More tests => 30;
+use Test::More tests => 23;
 
 use Froody::Error qw(err);
 
@@ -77,24 +77,3 @@ throws_ok {
   $method->invoker("Fred");
 } "Froody::Error", "invokers must be of the right class";
 ok(err("perl.methodcall.param"), "correct error type") or diag $@;;
-
-use_ok("Froody::Invoker::Null");
-
-throws_ok {
-  $method->invoker("Froody::Invoker::Null");
-} "Froody::Error", "invokers must be instances";
-ok(err("perl.methodcall.param"), "correct error type") or diag $@;;
-
-my $invoker = Froody::Invoker::Null->new();
-isa_ok($invoker, "Froody::Invoker");
-
-lives_ok {
-  $method->invoker($invoker);
-} "don't die setting real invoker";
-
-is($method->invoker, $invoker, "invoker set");
-
-lives_and {
-  my $rsp = $method->call({});
-  isa_ok($rsp, "Froody::Response", "got a froody reponse back");
-} "didn't die getting the response";

@@ -5,8 +5,10 @@ use warnings;
 use strict;
 
 use Froody::Response::Terse;
-
 use Scalar::Util qw(blessed);
+
+use Froody::Logger;
+my $logger = get_logger("froody.response.error");
 
 =head1 NAME
 
@@ -15,9 +17,7 @@ Froody::Response::Error - create a response from an error
 =head1 SYNOPSIS
 
   # from known problems
-  my $response = Froody::Response::Error->new()
-                                        ->set_error($@)
-                                        ->structure($errortype)
+  my $response = Froody::Response::Error->from_exception($@, $repository)
 
   print $response->render;
 
@@ -31,6 +31,20 @@ This class is designed to allow you to create error responses quickly
 and easily.
 
 =cut
+
+# from_exception is documented
+sub from_exception {
+  my ($class, $error, $repository) = @_;
+
+  unless (blessed($error) && $error->isa("Froody::Error")) {
+    $logger->error("unknown error of type ".ref($error)." thrown: $error");
+    $logger->error( $error );
+    $error = Froody::Error->new('froody.error.unknown');
+  }
+
+  my $structure = $repository->get_closest_errortype($error->code);
+  return $class->new->set_error( $error )->structure( $structure );
+}
 
 # set_error is documented
 sub set_error

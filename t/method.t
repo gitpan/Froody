@@ -54,39 +54,34 @@ is($method->description,
   'This is a test method',
   'description is correct');
 
-use Params::Validate qw{:all};
+is($method->source, 'unbound: my.test.method', 
+  "Source looks right for an unbound method");
 
 my $arguments;
 
 my $actual_arguments = $method->arguments;
-ok delete $actual_arguments->{baz}{callbacks}, 
-  "There is a callback hook for dealing with the multipart argument";
 is_deeply($method->arguments, $arguments = {
    'bar' => {
-            'type' => 1,
             'doc' => 'The non-optional bar argument',
             'optional' => '0',
-            'usertype' => 'text'
+            'type' => ['text']
           },
    'baz' => {
-            'type' => 2,
             'doc' => 'This is required, too',
             'optional' => 0,
             'multiple' => 1,
-            'usertype' => 'multipart'
+            'type' => ['multipart']
           },
    'foo' => {
-            'type' => 1,
             'doc' => 'The optional foo argument',
             'optional' => '1',
-            'usertype' => 'text'
+            'type' => ['text']
           },
    'shizzle' => {
-                'type' => 2,
                 'doc' => 'Arguments are the shizniz',
                 'optional' => 0,
                 'multiple' => 1,
-                'usertype' => 'csv'
+                'type' => ['csv']
               }
 }, "arguments with docs.") or diag Dumper $method->arguments;
   

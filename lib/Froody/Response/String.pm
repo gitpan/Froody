@@ -72,12 +72,11 @@ Once you've loaded this class you can automatically convert other
 Froody::Response class instances to Froody::Response::String objects with
 the C<as_string> method.
 
-  use Froody::Response::PerlDS;
   use Froody::Response::String;
-  my $string = Froody::Response::PerlDS
+  my $string = Froody::Response::Terse
       ->new()
       ->structure($froody_method)
-      ->content({ name => "foo", text => "bar" })
+      ->content(...)
       ->as_string;
   print ref($string);  # prints "Froody::Response::String"
 

@@ -7,9 +7,9 @@ use XML::LibXML;
 use Encode;
 use Params::Validate qw(SCALAR ARRAYREF HASHREF);
 
-use Storable qw(dclone);
-
 use Froody::Logger;
+use Froody::Walker;
+
 my $logger = get_logger("froody.response.terse");
 
 use Froody::Response::Error;
@@ -52,7 +52,18 @@ implementation that's defined in a Froody::Implementation subclass (If you
 don't know what that is, I'd go read that module's documentation now if I were
 you.)
 
-=cut
+=head2 Methods
+
+=over 4
+
+=item create_envelope(XML::Document, XML::Node (content))
+
+You're given one last shot to change the overall format of the response.
+
+The default behavior injects an <rsp stat='status'> wrapper around the C<content>
+node.
+
+=back
 
 =head2 Attributes
 
@@ -92,47 +103,40 @@ considered a feature)
 # superclass
 sub _to_xml
 {
-   my $self = shift;
-   my $content = shift;
-
-   # okay, we have an error.  This means we should have a data
-   # structure that looks like this:
-   # { code => 123, message => "" }
-   # and we need to construct XML from it
-#    if ($self->status && $self->status eq "fail")
-#    {
-#        my $xml = XML::LibXML::Document->new("1.0", "utf-8");
-#        my $rsp = $xml->createElement("rsp");
-#        $rsp->setAttribute("stat" => "fail");
-#        my $element = $xml->createElement("err");
-#        $element->setAttribute(
-#          "code"    => Encode::encode("utf-8", $self->content->{code}, "1")
-#        );
-#        $element->setAttribute(
-#          "message" => Encode::encode("utf-8", $self->content->{message}, "1")
-#        );
-#        
-#        $xml->setDocumentElement($rsp);
-#        return $xml;
-#    }
+    my $self = shift;
+    my $content = shift;
+    
+    # okay, we have an error.  This means we should have a data
+    # structure that looks like this:
+    # { code => 123, message => "" }
+    # and we need to construct XML from it
    
-   # okay, we've got a sucessful response.  Create the XML
-   my $xml = XML::LibXML::Document->new("1.0", "utf-8");
-   my $rsp = $xml->createElement("rsp");
-   $rsp->setAttribute("stat" => $self->status );
-   my $child = $self->_transform('TerseToXML',$self->content, $xml);
-   $rsp->addChild( $child ) if $child;
-   $xml->setDocumentElement($rsp);
-   return $xml;
+    # okay, we've got a sucessful response.  Create the XML
+    my $document = XML::LibXML::Document->new("1.0", "utf-8");
+    my $child = $self->_transform('Terse','XML',$self->content, $document);
+    my $rsp = $self->create_envelope($document, $child);
+    $document->setDocumentElement($rsp);
+
+    return $document;
+}
+
+sub create_envelope {
+    my ($self, $document, $content) = @_;
+    my $rsp = $document->createElement("rsp");
+    $rsp->setAttribute("stat" => $self->status );
+    $rsp->addChild( $content ) if $content;
+    return $rsp;
 }
 
 sub _transform {
     my $self = shift;
-    my $walker_class = shift;  # the walker class defines what we're transforming to what
+    my $from = shift;  # the walker class defines what we're transforming to what
+    my $to = shift;
+    
     my @args = @_;
 
     my $method = $self->structure
-      or Froody::Error->throw("froody.convert.nomethod", "Response has no associated Froody Method!");
+      or Froody::Error->throw("froody.convert.nomethod", "Response has no associated Froody Structure!");
 
     # FIXME: Shouldn't a lack of structure indicate that we should be using the default
     # structure???
@@ -140,13 +144,30 @@ sub _transform {
       or Froody::Error->throw("froody.convert.nostructure",
         "Associated method '".$method->full_name."' doesn't have a specification structure!");
     
+    my $walker = Froody::Walker->new({
+      'spec' => $spec,
+      'method' => $method->full_name
+    });
+    
     # create a new instance of the walker that processes our data
-    $walker_class = "Froody::Walker::".$walker_class;
-    $walker_class->require or Froody::Error->throw("perl.use","couldn't load class $walker_class");
-    my $walker = $walker_class->new(@args);
+    $from = "Froody::Walker::".$from;
+    
+    $from->require or Froody::Error->throw("perl.use",
+      "couldn't load class $from");
+      
+    $walker->from($from->new);
+   
+   # create a new instance of the walker that processes our data
+    $to = "Froody::Walker::".$to;
+    
+    $to->require or Froody::Error->throw("perl.use",
+      "couldn't load class $from");
+   
+    $walker->to($to->new);
+
 
     # and walk with it
-    return $walker->walk($spec, $method->full_name);
+    return $walker->walk(@args);
 }
 
 =head2 Converting other Responses to Froody::Response::Terse objects
@@ -155,9 +176,8 @@ Once you've loaded this class you can automatically convert other
 Froody::Response class instances to Froody::Response::Terse objects with
 the C<as_terse> method.
 
-  use Froody::Response::PerlDS;
   use Froody::Response::Terse;
-  my $terse = Froody::Response::PerlDS
+  my $terse = Froody::Response::XML
       ->new()
       ->structure($froody_method)
       ->content({ name => "foo", text => "bar" })
@@ -167,7 +187,8 @@ the C<as_terse> method.
 =cut
 
 # as_terse is documented
-sub as_terse { $_[0] }
+sub as_terse { $_[0] } 
+
 sub Froody::Response::as_terse
 {
   my $self = shift;
@@ -175,15 +196,43 @@ sub Froody::Response::as_terse
   # Er...I have no idea how to do this.  quick, let's turn
   # whatever we are into xml first!
   my $xml = $self->as_xml;
-  
+
   # create a new terse
   my $terse = Froody::Response::Terse->new();
   $terse->structure($xml->structure);
 
   # walk the xml and set it as the content
   my ($node) = $xml->xml->findnodes("/rsp/*");
-  $terse->content($terse->_transform("XMLToTerse", $node));  
+  $terse->content($terse->_transform("XML","Terse", $node));  
   return $terse;
+}
+
+sub content
+{
+  my $self = shift;
+  my $ret = $self->SUPER::content(@_);
+  if (@_) {
+    $ret = $self->_validate_content || $ret;
+  }
+  return $ret;
+}
+
+sub _validate_content
+{
+  my $self = shift;
+  if ($self->structure && $self->content) {
+    return $self->SUPER::content($self->_transform("Terse","Terse",$self->content));
+  }
+}
+
+sub structure
+{
+  my $self = shift;
+  my $ret = $self->SUPER::structure(@_);
+  if (@_) {
+    $self->_validate_content;
+  }
+  return $ret;
 }
 
 sub as_error

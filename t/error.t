@@ -11,7 +11,7 @@
 use warnings;
 use strict;
 
-use Test::More tests => 17;
+use Test::More tests => 18;
 use Test::Exception;
 
 use Froody::Error qw(err);
@@ -19,20 +19,21 @@ use Froody::Error qw(err);
 # check that an empty error handles right:
 dies_ok { Froody::Error->throw("") } "error thrown";
 is( $@->code, "unknown", "code is unknown");
-like( $@, qr/^\Qunknown:\E\n.../, "stringifies ok");
+like( $@, qr/^\Qunknown\E\n.../, "stringifies ok");
 
 # check that an error code works right
 dies_ok { Froody::Error->throw("pie.cold") } "error thrown";
 is( $@->code, "pie.cold", "code is pie.cold");
-like( $@, qr/^\Qpie.cold:\E\n.../, "stringifies ok");
+like( $@, qr/^\Qpie.cold\E\n.../, "stringifies ok");
 
 # check the message works right
-dies_ok { Froody::Error->throw("pie.cold", "My PIE is cold!") } "error thrown";
+dies_ok { Froody::Error->throw("pie.cold", "My PIE is cold!", { pie => 'cold' }) } "error thrown";
 is( $@->code, "pie.cold", "code is pie.cold");
 is( $@->message, "My PIE is cold!", "body is hello");
 is( $@->msg, "My PIE is cold!", "body is hello");
 is( $@->text, "My PIE is cold!", "body is hello");
-like( $@, qr/^\Qpie.cold - My PIE is cold!:\E\n.../, "stringifies ok");
+is_deeply( $@->data, { pie => 'cold' }, "Pie is definitely cold.");
+like( $@, qr/^pie\.cold - My PIE is cold!.*Data:.*---.*pie: cold.*Stack trace:.*/s, "stringifies ok");
 
 ok $@->isa_err('pie.cold'), 'specific error';
 ok $@->isa_err('pie'), 'generic class of error';

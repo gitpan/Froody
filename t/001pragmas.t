@@ -8,6 +8,7 @@ use Test::More;
 use File::Find::Rule;
 
 my @files = File::Find::Rule->file()->name('*.pm')->in('lib');
+plan skip_all => "No modules" unless scalar @files;
 plan tests => 2 * scalar @files;
 
 foreach my $file ( @files ) {

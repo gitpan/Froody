@@ -25,8 +25,9 @@ my $methods = [sort map { $_->full_name } $repo->get_methods()];
 eq_or_diff( $rs->{method}, $methods, "Get the right list of methods")
   or die Dumper $rs, $methods;
 
+# note leading and trailing spaces.
 ok $rs = $client->call('froody.reflection.getMethodInfo', 
-                         method_name => 'froody.reflection.getMethodInfo');
+                         method_name => '        froody.reflection.getMethodInfo      ');
 
 my $method = $repo->get_method('froody.reflection.getMethodInfo');
 
@@ -40,7 +41,7 @@ foreach (@{ $rs->{arguments}{argument} }) {
   ok my $info = $method->arguments->{$_->{name}};
   is $_->{-text}, $info->{doc};
   is $_->{optional}, $info->{optional};
-  is $_->{type}, $info->{usertype}; 
+  is $_->{type}, join(',',@{$info->{type}});
 }
 
 foreach (@{ $rs->{errors}{error} }) {

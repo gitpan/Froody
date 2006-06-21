@@ -84,11 +84,17 @@ sub xml
 sub render
 {
   my $self = shift;
-  my $string = $self->xml->toString;
+  my $string = $self->xml->toString(@_);
   my $encoded = Encode::encode("utf-8", $string);
   return $encoded;
 }
 
+# status is documented
+sub status
+{
+  my $self = shift;
+  $self->xml->findvalue('/rsp/@stat');
+}
 =head2 Converting other Responses to Froody::Response::XML objects
 
 Once you've loaded this class you can automatically convert other
@@ -114,11 +120,13 @@ sub Froody::Response::as_xml
   my $self = shift;
   
   my $parser = XML::LibXML->new();
-  my $doc = $parser->parse_string($self->render);
+  my $rendered = $self->render
+    or Froody::Error->throw('froody.invoke.badresponse', "No XML returned from call");
+  my $doc = $parser->parse_string($rendered);
   
   my $xml = Froody::Response::XML->new();
   $xml->xml($doc);
-  $xml->structure($self->structure);
+  $xml->structure($self->structure) if $self->structure;
 
   return $xml;
 }

@@ -10,6 +10,8 @@ use Scalar::Util qw(blessed);
 
 our $VERSION = 0.01;
 
+__PACKAGE__->mk_accessors(qw{ arguments errors needslogin description });
+
 =head1 NAME
 
 Froody::Method - object representing a method callable by Froody
@@ -65,13 +67,12 @@ Calls this method.  This dispatches this method via the correct implementation
 
 sub call
 {
-   my $self        = shift;
-   my $params_hash = shift;
+   my ($self, $params_hash, $metadata) = @_;
    
    my $invoker = $self->invoker
     or Froody::Error->throw("froody.invoke.noinvoker", "No invoker defined for this method");
    
-   return $invoker->invoke( $self, $params_hash );
+   return $invoker->invoke( $self, $params_hash, $metadata );
 }
 
 =item match_to_regex( "foo.bar.*" )
@@ -94,12 +95,8 @@ sub match_to_regex
   return qr/^$query$/;
 }
 
-__PACKAGE__->mk_accessors(qw{
-     arguments errors needslogin
-     description
-});
 
-# right, previously these were all defined using Class::Accessor::Chained and
+# right, previously these were all defined using Class::Accessor::Chained::Fast and
 # just set in C<new>, which is really, really dumb, since then they could be
 # set to inconsistent values later.  Let's not do that, let's compute them on an
 # as-needed basis
@@ -152,6 +149,18 @@ sub full_name
   return $self;
 }
 
+=item source
+
+Provide diagnostic information about this method.
+
+=cut
+
+sub source {
+  my $self = shift;
+
+  return ($self->invoker ? $self->invoker->source : "unbound").": ".$self->full_name;
+}
+
 =back
 
 =head1 ACCESSORS
@@ -188,8 +197,7 @@ A hash reference with the names of each argument, with the following structure:
          multiple => 1, 
          optional => 1,
          doc => 'Argument documentation',
-         usertype => 'scalar', #user defined type label.
-         type => SCALAR, #A type, as defined by L<Params::Validate>
+         type => 'text', #user defined type label.
        }
     }
 

@@ -7,6 +7,7 @@ use warnings;
 
 use Scalar::Util qw(blessed);
 use Storable;
+use YAML::Syck;
 
 =head1 NAME
 
@@ -218,7 +219,8 @@ sub stringify {
   
   my $return = $self->code;
   $return .= " - " . $self->message if length($self->message);
-  return $return . ":\n$strace"
+  $return .= "\nData:\n".Dump($self->data) if defined $self->data;
+  return $return . "\nStack trace:\n$strace"
 }
 
 =back

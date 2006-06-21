@@ -68,19 +68,51 @@ sub dispatch {
 
   my $server = $class->server_class->new;
   my $request = $server->request_class->new;
-  my $dispatch = $class->dispatch_class->new->error_style("response");
-
-  my $response = $dispatch->dispatch(
+  my $response = $class->dispatcher->dispatch(
       method => $request->method,
       params => $request->params || {},
   );
-  $server->send_header($response, $class->content_type);
-  $server->send_response($response);
+  
+  # lookup what type of output the request asked for then send
+  # the correct header and response rendered for that type
+  my $type = $request->type;
+  
+  $server->send_header($response, $class->content_type_for_type($type));
+  
+  my $render_method = "render_$type";
+  my $bytes = $response->$render_method;
+  $server->send_body($bytes);
 }
 
-=item send_header
+=item dispatcher()
 
-=item send_response
+Returns a dispatcher object set up for this server with the correct
+request, response and error classes. I find this useful for getting
+a dispatcher object for testing against when I have a server class with
+lots of customization in.
+
+=cut
+
+sub dispatcher {
+  my $class = shift;
+  my $server = $class->server_class->new;
+  my $dispatcher = $class->dispatch_class->new;
+  $dispatcher->response_class($server->response_class)
+             ->error_class($server->error_class);
+  $dispatcher->error_style('response');
+  return $dispatcher;
+}
+
+=item send_header($response, $content_type)
+
+Implemented by subclasses.  Should send the headers to the client
+using the content type passed.  Should call the $response's cookies
+method and dtrt with that.
+
+=item send_body($bytes)
+
+Implmented by subclasses.  Sends the body of the connection.  $bytes should
+be a rendered response.
 
 =item handler
 
@@ -93,6 +125,25 @@ sub handler : method {
   my ($class, $r) = @_;
   $class->dispatch();
   return &Apache::OK;
+}
+
+=item content_type_for_type($type) / content_type_for_type($type, $header);
+
+Gets and sets the header for a type of server.
+
+=cut
+
+my $h4t = {
+	xml => "text/xml; charset=utf-8",
+};
+
+sub content_type_for_type {
+   my $class = shift;
+   my $type  = shift;
+   unless (@_)
+     { return $h4t->{ $type } or Froody::Error->throw('froody.type.notknown', "unknown type '$type'"); }
+   $h4t->{ $type } = shift;
+   return $class;
 }
 
 
@@ -112,6 +163,10 @@ uses:
 
 =item request_class
 
+=item error_class
+
+=item response_class
+
 =cut
 
 sub server_class {
@@ -123,19 +178,9 @@ sub dispatch_class { "Froody::Dispatch" }
 
 sub request_class { "Froody::Request" }
 
-=back
+sub response_class { "Froody::Response" }
 
-These methods define a few constants:
-
-=over
-
-=item content_type
-
-The header content_type.  By default, it's "text/xml; charset=utf-8"
-
-=cut
-
-sub content_type { "text/xml; charset=utf-8" }
+sub error_class { "Froody::Response::Error" }
 
 =back
 

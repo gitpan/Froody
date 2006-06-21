@@ -47,16 +47,7 @@ L<Froody>, L<Froody::Reflection>
 =cut
 
 sub xml {
-  return <<'XML';
-<spec>
-<methods>
-  <method name="froody.reflection.getMethodInfo">
-    <description>Returns information for a given froody API
-      method.  As long as there is a method matching the given
-      method_name, returns description and usage of that method in
-      xml.
-    </description>
-    <response>
+  my $METHOD_INFO = q{
       <method name="froody.fakeMethod" needslogin="1">
         <description>A fake method</description> 
         <response>xml-response-example</response> 
@@ -69,6 +60,23 @@ sub xml {
           <error code="1" message="it would be bad">Don't cross the streams.</error>
         </errors>
       </method>
+  };
+  my $ERROR_INFO = q{
+        <errortype code="mycode">
+          Internal structure of your error type goes here (including XML)
+        </errortype>
+  };
+  return <<"XML";
+<spec>
+<methods>
+  <method name="froody.reflection.getMethodInfo">
+    <description>Returns information for a given froody API
+      method.  As long as there is a method matching the given
+      method_name, returns description and usage of that method in
+      xml.
+    </description>
+    <response>
+      $METHOD_INFO
     </response>
     <arguments>
       <argument name="method_name" optional="0">The name of the method to fetch information for.</argument>
@@ -105,15 +113,34 @@ sub xml {
         <argument name="code" optional="0">The code of the error type whose information is being requested.</argument>
       </arguments>
       <response>
-        <errortype code="mycode">
-          Internal structure of your error type goes here (including XML)
-        </errortype>
+        $ERROR_INFO
       </response>
       <errors>
         <error code="froody.error.notfound.errortype" message="Error Type not Found"/>
       </errors>
     </method>
+    <method name="froody.reflection.getSpecification">
+      <description>Request the full public specification for a froody endpoint.</description>
+      <response>
+        <spec>
+          <methods>
+            $METHOD_INFO
+            $METHOD_INFO
+          </methods>
+          <errortypes>
+            $ERROR_INFO
+            $ERROR_INFO
+          </errortypes>
+        </spec>
+      </response>
+    </method>
   </methods>
+  <errortypes>
+    <errortype code="perl.methodcall.param">
+      <error name="foo">Problem</error>
+      <error name="bar">Problem</error>
+    </errortype>
+  </errortypes>
 </spec>
 XML
 }

@@ -21,8 +21,8 @@ SYNOPSIS
     See Froody::QuickStart for a better introduction.
 
 DESCRIPTION
-    Froody is a framework that can be used to easily create both server and
-    clients for making remote API calls across the web.
+    Froody is a framework that can be used to easily create both a server
+    and a client for making remote API calls across the web.
 
     Froody communicates by the AJAX friendly calling convention of passing
     parameters to methods via CGI parameters and returning XML data

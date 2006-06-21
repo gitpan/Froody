@@ -28,10 +28,12 @@ sub new {
   my $self = $class->SUPER::new(@_);
 
   my $vars = $self->get_params;
-
   my $method = delete $vars->{method};
   $self->method($method);
 
+  my $type = delete $vars->{_froody_type};
+  $self->type($type);
+  
   $self->params($vars);
   
   return $self;
@@ -62,12 +64,6 @@ sub get_params {
            ->filename($upload->tempname)
            ->client_filename($upload->filename)
            ->mime_type($upload->info->{'Content-Type'});
-  }
-
-  # read cookies into the request as well.
-  for (CGI::cookie()) {
-    next unless $_ eq 'cookie_session';
-    $vars{$_} ||= CGI::cookie($_);
   }
 
   return \%vars;

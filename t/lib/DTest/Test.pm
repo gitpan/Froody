@@ -27,4 +27,14 @@ sub haltandcatchfire {
   });
 }
 
+sub badhandler {
+  Froody::Error->throw('test.badhandler.tripwire', "I'm just a catalyst for bad things");
+}
+
+sub error_handler {
+  my ($self,$method, $error, $data) = @_;
+  die "This shouldn't kill froody" if $method->name =~ /badhandler/;
+  return $self->SUPER::error_handler($method, $error, $data);
+}
+
 1;

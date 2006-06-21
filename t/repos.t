@@ -21,7 +21,7 @@ $Term::ANSIColor::AUTORESET = 1;
 # user editable parts
 
 # start the tests
-use Test::More tests => 72;
+use Test::More tests => 73;
 use Test::Exception;
 
 use_ok("Froody::Repository");
@@ -43,7 +43,7 @@ isa_ok($repos, "Froody::Repository");
 
 lives_ok {
   my @methods = $repos->get_methods();
-  is(@methods, 4, "right number of default methods");
+  is(@methods, 5, "right number of default methods");
   isa_ok($_, "Froody::Method", "got a froody method back")
     foreach (@methods);
   is_deeply([ sort map { $_->full_name } @methods], [qw(
@@ -51,6 +51,7 @@ lives_ok {
     froody.reflection.getErrorTypes
     froody.reflection.getMethodInfo
     froody.reflection.getMethods
+    froody.reflection.getSpecification
   )], "right default methods returned");
 } "got default methods back without dieing";
 

@@ -38,36 +38,6 @@ a C<< <rsp stat="ok">...</rsp> >> set of tags.
 This format is used by Froody::Response::String and is essentially what
 everything must at some point produce.
 
-=head2 PerlDS Format
-
-This is the very verbose format used by Froody::Response::PerlDS
-
-  {
-    name       => "people".
-    attributes => { group => "frameworks" },
-    value      =>
-      "Frameworks is a department of Fotango.  We work on lots of\n".
-      "software, including writing tools like Froody.",
-    children   => [
-      {
-        name       => "people".
-        attributes => { 
-        nick   => "clkao",
-        number => "243"
-        children => [
-          {
-            name => "name",
-            value => "Chia-liang Kao",
-          },
-        ],
-      }
-    ...
-    ],
-  }
-
-Note that I haven't listed all the users.  It'll just take to darn long.
-This format is *very* verbose.
-
 =head2 Terse
 
 This is the Terse format used by Froody::Response::Terse.  It's what's

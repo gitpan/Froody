@@ -34,35 +34,48 @@ use strict;
 use warnings;
 
 use HTTP::Date;
+use Froody::Request::CGI;
+use Froody::Dispatch;
+
+use Froody::Server;
+use Froody::Renderer::json;
 
 sub handle_request
 {
- my ($self, $cgi) = @_;
+  my ($self, $cgi) = @_;
  
-  use Froody::Request::CGI;
-  my $request = Froody::Request::CGI->new();
+  # what are we asking for?
+  my $request = Froody::Request::CGI->new($cgi);
+  my $type = $request->type;
   
-  use Froody::Dispatch;
+  # dispatch 
   our $dispatcher ||= Froody::Dispatch->new();
   $dispatcher->error_style("response");
-  $self->_send_bytes($dispatcher->dispatch(
+  my $response = $dispatcher->dispatch(
     method => $request->method,
     params => $request->params,
-  )->present);
+  );
+  
+  # send the data back to the browser
+  my $method = "render_$type";
+  $self->_send_bytes(
+    Froody::Server->content_type_for_type($type), 
+    $response->$method
+  );
 }
 
 sub _send_bytes
 {
   my $self = shift;
+  my $content_type = shift;
   my $bytes = shift;
-  
   my $time = time2str();
   
   # server headers
   print "HTTP/1.0 200 OK\r\n";
 
   # standard headers
-  print "Content-Type: text/xml\r\n";
+  print "Content-Type: $content_type\r\n";
   print "Content-Length: ", length($bytes), "\r\n";
 
   # froody headers (for debugging)

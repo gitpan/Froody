@@ -33,19 +33,19 @@ sub send_header
   my $class = shift;
   my $response = shift;
   my $content_type = shift;
-
+  
   print CGI::header(
     -type => $content_type,
     $response->cookie ? ( -cookie => $response->cookie ) : (),
   );
 }
 
-sub send_response
+sub send_body
 {
   my $class = shift;
-  my $response = shift;
+  my $bytes = shift;
   
-  print $response->present;
+  print $bytes;
 }
 
 =back

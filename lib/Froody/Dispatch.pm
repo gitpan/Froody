@@ -6,9 +6,8 @@ Froody::Dispatch - Easily call Froody Methods
 
   use Froody::Dispatch;
   my $dispatcher = Froody::Dispatch->new();
-  my $response = $dispatcher->dispatch(
-     method => "foo.bar.baz",
-     params => { fred => "wilma" },
+  my $response = $dispatcher->call( "foo.bar.baz",
+    fred => "wilma" 
   );
 
 or, as a client:
@@ -16,17 +15,17 @@ or, as a client:
   $client = Froody::Dispatch->new;
 
   # uses reflection to load methods from the server
-  $client->endpoint( "uri" ); 
+  $client->add_endpoint( "uri" ); 
 
   # look mah, no arguments!
-  $rsp = $client->call('service.wibble');
+  $rsp = $invoker->invoke($client, 'service.wibble');
 
   # ok, take some arguments then.
-  $rsp = $client->call('service.devide', divisor => 1, dividend => 2);
+  $rsp = $invoker->invoke($client, 'service.devide', divisor => 1, dividend => 2);
 
   # alternatively, args can be passed as a hashref:
   $args = { devisor => 1, devidend => 2 }; 
-  $rsp = $client->call('service.devide', $args);
+  $rsp = $invoker->invoke($client, 'service.devide', $args);
 
 
 =head1 DESCRIPTION
@@ -50,10 +49,14 @@ use UNIVERSAL::require;
 use Froody::Response::Terse;
 use Froody::Repository;
 use Froody::Response::Error;
+use Froody::Invoker::Remote;
+use Froody::Error qw(err);
 
 use Froody::Logger;
 
 my $logger = get_logger("froody.dispatch");
+
+__PACKAGE__->mk_accessors(qw{response_class error_class endpoints filters});
 
 =head1 METHODS
 
@@ -70,11 +73,152 @@ Create a new instance of the dispatcher
 sub new {
   my $class = shift;
   my $self = $class->SUPER::new(@_);
-  $self->error_style("throw");
+  $self->endpoints({}) unless $self->endpoints;
+  $self->filters([]) unless $self->filters; 
+  $self->error_class('Froody::Response::Error') unless $self->error_class;
   $self;
 }
 
+=item parse_cli (@args) 
+
+Parses a list of files, urls, modules, method filter expressions, and paths.
+
+What you're able to do:
+
+=over 4
+
+=item module
+
+-MModule::Name (or just Module::Name) - request that that module is registered.
+
+=item path
+
+-Ipath will inject that path into C<%INC>
+
+=item perl module file name
+
+filename will extract all module names from within the path
+
+=item method filter 
+
+foo.bar.baz will be interpreted as a filter expression.
+
+=back
+
+Returns a hashref of include paths, modules, urls, and filters
+
+=cut
+
+sub parse_cli {
+  my ($self, @args) = @_;
+  my @urls;
+  my @modules;
+  my @filters;
+  my @includes;
+  for (@args) {
+    if ($_ =~ s/^-M// || $_ =~ m/::/) {
+      push @modules, $_; 
+    } elsif ( $_ =~ m/^https?:/) {
+      push @urls, $_;
+    } elsif ( -f $_ ) {
+      # fairly horrible, this.
+      my $data;
+      {
+        open my $fh, "<", $_ or die "can't open $_ for reading: $!";
+        local $/;
+        $data = <$fh>;
+      }
+      while ($data =~ /^\s*package (.*?);$/gm) {
+        my $module = $1;
+        $module =~ s/'/::/g;  # incase of crack
+        push @modules, $module;
+      }
+    } elsif ( $_ =~ s/^-I//) {
+      push @includes, $_;
+    } elsif ( $_ =~ m/\./) {
+      push @filters, $_;
+    } else {
+      # TODO: Write a real usage doc.
+      die "What should I do with $_?  I understand perl modules, URLs, and froody method names";
+    }
+  }
+  return {
+    modules => \@modules,
+    urls => \@urls,
+    filters => \@filters,
+    includes => \@includes,
+  }
+}
+
+=item config ($args)
+
+Configures the dispatcher. Takes { filters => [], modules => [], urls => [], includes => [] } and
+ensures that the dispatcher only contains methods that are present in either the modules
+list or the urls list, and only if those modules match one or more of the filters in the
+filters list.  If the filters list is empty, then all methods will be registered.
+
+=cut
+
+sub config {
+  my ($self, $args) = @_;
+  unless (ref $self) {
+    $self = $self->new; # we should be an instance.
+  }
+ 
+  my $repository = new Froody::Repository();
+  $self->repository($repository);
+  for (@{ $args->{includes} }) {
+    unshift @INC, $_; #extend the search path
+  }
+  my @filters = @{ $args->{filters} || [] };
+  $self->filters(@filters);
+  for (@{ $args->{urls} || [] }) { 
+    $self->add_endpoint( $_, @filters );
+  }
+  for (@{ $args->{modules} || [] }) {
+    $self->add_implementation( $_, @filters );
+  }
+  return $self;
+}
+
+=item add_implementation 
+
+Adds an implementation's methods to this dispatcher.
+
+=cut
+
+sub add_implementation {
+  my ($self, $module, @filters) = @_;
+  $module->require;
+  $module->import;
+  my $invoker = $module->new if $module->can('new');
+  if (!$invoker->isa('Froody::Implementation')) {
+    $invoker = (bless {}, "Froody::Invoker");
+  }
+  $self->endpoints->{$module} = { invoker => $invoker, loaded => 1 };
+  $self->repository->register_api( $module, $invoker, @filters );
+}
+
+=item cli_config
+
+Parses arguments with L<parse_cli|/Froody::Dispatch>, and then calls
+config with the arguments. This is intended to be used for parsing command
+line options, and directly creating configuration details
+
+Returns a dispatch object, and the parsed options.
+
+=cut
+
+sub cli_config {
+  my ($self, @args) = @_;
+  my $parsed = $self->parse_cli(@args);
+
+  return ($self->config($parsed), $parsed);
+}
+
 =item default_repository
+
+DEPRECATED: This is harmful -- you end up with random methods in your namespaces
 
 The first time this method is called it creates a default repository by
 trawling through all loaded modues and checking which are subclasses of
@@ -82,6 +226,8 @@ Froody::Implementation.
 
 If you're running this in a mod_perl handler you might want to consider
 calling this method at compile time to preload all the classes.
+
+See L<config|/Froody::Dispatch>
 
 =cut
 
@@ -93,26 +239,68 @@ sub default_repository
   our $default_repository;
   unless ($default_repository)
   {
-     $default_repository = Froody::Repository->new();
-  
-     # for every module already loaded that is a Froody::Implementation
-     # register it's methods in this repository
-     foreach (keys %INC)
-     {
-        # convert to module names
-        s/\.pm$//;
-        s{/}{::}g;
-        
-        next if $_ eq "Froody::Implementation";  # base class
-        next if $_ eq "Froody::Reflection";      # don't register twice
-        
-       if (UNIVERSAL::isa($_, "Froody::Implementation"))
-        { $_->register_in_repository($default_repository) }
-     }
-  }
+    $default_repository = Froody::Repository->new();
+    
+    # for every module already loaded that is a Froody::Implementation
+    # register it's methods in this repository
+    foreach (keys %INC)
+    {
+      # convert to module names
+      s/\.pm$//;
+      s{/}{::}g;
+      
+      if (UNIVERSAL::isa($_, "Froody::Implementation")) {
+	  # some classes aren't really implementations. In the absence
+	  # of an elegant way of doing this, we'll just use a Magic
+	  # Variable which, if set, means "don't use me as an
+	  # implementation". Slightly better than a hard-coded list of
+	  # classes, but not much.
+          no strict 'refs';
+          no warnings 'once';
+          next if ${$_."::IMPLEMENTATION_SUPERCLASS"};
 
+          $_->register_in_repository($default_repository)
+      }
+    }
+  }
+  
   # return the default repos
   return $default_repository;
+}
+
+=item call_via ($invoker, $method, [@ARGS, $args])
+
+Calls C<$method> with C<$invoker>.  If $invoker or $method are not
+instances of C<Froody::Invoker> and C<Froody::Method> respectively then
+this method will attempt to discover them in the registered list of endpoints
+and the method repository.
+
+Returns a Froody::Response object.
+
+=cut
+
+sub call_via {
+  my ($self, $invoker, $method )  = splice @_, 0, 3; #pull off first three args.
+  my $args  = ref $_[0] eq 'HASH' ? $_[0] 
+                                  : { @_ };
+
+  Carp::confess "You must provide an invoker" unless $invoker;
+  
+  if (!UNIVERSAL::isa($invoker, 'Froody::Invoker')) {
+    $self->endpoints({}) unless $self->endpoints();
+    $invoker = $self->endpoints->{$invoker}{invoker}
+  }
+
+  $method = $self->get_method($method, $args)
+    unless UNIVERSAL::isa($method, 'Froody::Method');
+  
+  my $meta = {
+    dispatcher => $self,
+    method => $method,
+    params => $args,
+    repository => $self->repository,
+  };
+  return $invoker->invoke($method, $args, $meta);
 }
 
 =item add_endpoint( "url" )
@@ -124,64 +312,108 @@ TODO:  add regex filtering of methods.
 =cut
 
 sub add_endpoint {
-  my ($self,$url) = @_;
+  my ($self,$url, @method_filters) = @_;
+  die "add_endpoint requires an url" unless $url;
+  
+  my $endpoints = $self->endpoints;
+  if ($endpoints->{$url}{loaded}) {
+    $logger->warn("Attempted to add endpoint($url) more than once.");
+    return $self;
+  }
+  $self->endpoints->{ $url }{invoker} ||= Froody::Invoker::Remote->new()->url($url);
 
-  # override the local invokers *just* *for* *now*
-  my $invoker = Froody::Invoker::Remote->new()->url($url);
+  $self->load_specification($url, @method_filters);
+ 
+  return $self;
+}
+
+=item load_specification ($name, @method_filters) 
+
+Load method and errortype specifications from a named endpoint
+
+=cut
+
+sub load_specification {
+  my ($self, $name, @method_filters) = @_;
+  
+  my $endpoint = $self->endpoints->{$name};
+  my $invoker = $endpoint->{invoker};
+  
   my $repo = $self->repository;
-
-
-  my $get_methods = $repo->get_method("froody.reflection.getMethods")->new->invoker($invoker);
-  my $get_method_info = $repo->get_method("froody.reflection.getMethodInfo")->new->invoker($invoker);
-  
-  my $response = $get_methods->call({})->as_terse;
-  foreach my $method_name (@{ $response->content->{method} })
-  {
-     my $method_response = $get_method_info->call({ method_name => $method_name });
-     local $@;
-     eval {
-       my $method = Froody::API::XML->load_method(
-         $method_response->as_xml->xml->findnodes("//method")
-       );
-       $method->invoker($invoker);
-       $repo->register_method($method);
-     };
-     warn "method '$method_name' not loaded: $@" if $@;
-  }
-  
-  my $get_errortypes = $repo->get_method("froody.reflection.getErrorTypes")->new->invoker($invoker);
-  my $get_errortype_info = $repo->get_method("froody.reflection.getErrorTypeInfo")->new->invoker($invoker);
-  $response = $get_errortypes->call({})->as_terse;
-  foreach my $code (@{ $response->content ? $response->content->{errortype} : [] })
-  {
-     my $errortype_response = $get_errortype_info->call({ code => $code });
-     local $@;
-     eval {
-       my $errortype = Froody::API::XML->load_errortype(
-         $errortype_response->as_xml->xml->findnodes("//errortype")
-       );
-       $repo->register_errortype($errortype);
-     };
-     warn "errortype '$code' not loaded: $@" if $@;
+  my $response = $self->call_via($invoker, 'froody.reflection.getSpecification');
+  if ($response->as_xml->status eq 'ok') {
+    my @structures =  Froody::API::XML->load_spec($response->as_xml->xml);
+    $repo->load($invoker, \@structures, @method_filters);
+    $endpoint->{$endpoint}{loaded} = time;
   }
 }
 
-sub _get_method {
-  my ($repo, $name, $invoker) = @_;
+=item reload ([$time_threshold])
 
-  my $method = $repo->get_method($name);
-  my $old_invoker = $method->invoker;
-  $method->invoker($invoker);
+Reload all specifications. Optionally provide a threshold in seconds
+to indicate how long we should wait before interageting a server.
 
-  return $method, $old_invoker;
+=cut
+
+sub reload {
+  my ($self, $time_threshold) = @_;
+  $time_threshold ||= 0;
+  for (keys %{ $self->endpoints } ) {
+    next if $self->_endpoint_age($_) <= $time_threshold;
+    $self->load_specification($_, @{ $self->filters }); 
+  }
 }
 
+sub _endpoint_age {
+  my ($self, $name) = @_;
+  $self->endpoints->{$_}{loaded} - time
+}
 
 =back
 
 =head2 Instance Methods
 
 =over
+
+=item get_method( 'full_name', args )
+
+Retrieve a method
+
+=cut
+
+sub get_method {
+  my ($self, $name, $args) = @_;
+  Froody::Error->throw("froody.invoke.nomethod", "Missing argument: method")
+    unless length($name || "");
+
+  # get the method from the repository and just return it
+  my $repo = $self->repository;
+  my $method = eval { $repo->get_method($name, $args) };
+  return $method if $method;
+
+  # We didn't find it?  Maybe it's been declared in our spec that may have
+  # changed since we last loaded it.  Let's look for it in here!
+  # TODO: Improve this so it DTRT more (though works for now)
+  if (err('froody.invoke.nosuchmethod')) {
+    local $@ = $@;
+    my $get_info = $repo->get_method("froody.reflection.getMethodInfo", $args);
+    for (keys %{$self->endpoints || {}}) {
+      my $invoker = $self->endpoints->{$_}{invoker};
+
+      my $info = $self->call_via($invoker, $get_info, { %$args, method_name => $name })->as_xml;
+      if ($info->status eq 'ok') {
+        $method = Froody::API::XML->load_method( $info->xml->findnodes("/rsp/method") );
+        $method->invoker($invoker);
+        $repo->register_method($method);
+      }
+      return $method if $method;
+    }
+  }
+
+  # if we got this far then, darnit, we had an error so we should throw
+  # it again
+  die $@;
+}
 
 =item dispatch( %args )
 
@@ -204,81 +436,59 @@ the methods defined below.
 
 sub dispatch {
   my $self = shift;
-  my $repo = $self->repository;
+  my $args = { @_ };
 
-  my $method;
-  my $method_name;
-  my $response = eval {
+  # Strip leading and trailing whitespace in all incomming attributes.
+  if (defined $args->{method}) {
+    $args->{method} =~ s/^\s+//;
+    $args->{method} =~ s/\s+$//;
+  }
+  for (keys %{ $args->{params} }) {
+    next unless defined( $args->{params}{$_} );
+    $args->{params}{$_} =~ s/^\s+//;
+    $args->{params}{$_} =~ s/\s+$//;
+  }
+
+  my $response;
   
-    # make sure we're being dispatched with the right args
-    my %args = $self->validate_object(@_, {
-      method      => { type => SCALAR },
-      params      => { type => HASHREF, optional => 1 },
-    });
-
-    Froody::Error->throw("froody.invoke.nomethod", "Missing argument: method")
-      unless length($args{method});
-
-    # load the Froody::Method, and call it with the parameters
-    $method = $repo->get_method($args{method});
-    my $response = $method->call($args{params} || {});
-
-    # throw an exception if what we got back wasn't an acceptable
-    # Froody::Response object
-    $self->_validate_response($response);
-    
-    return $response;
-  };
+  my $method = eval { $self->get_method( $args->{method}, $args->{params} ) };
   
+  if (my $e = $@) {
+    # something here eats $@. Bah.
+    $response = $self->error_class->from_exception( $e, $self->repository );
+
+  } else {
+  
+    Froody::Error->throw("froody.invoke.noinvoker", "No invoker defined for this method")
+      unless $method->invoker;
+  
+    $response = $self->call_via($method->invoker, $method, $args->{params});
+  }
+  
+  # throw an exception if what we got back wasn't an acceptable
+  # Froody::Response object
+  $self->_validate_response($response);
+
   my $style = $self->error_style;
   
-  # either a problem during initial dispatch, or when we got the
-  # response back we couldn't convert it to another type and check
-  # that it was a successful pass
-  if ($@)
-  {     
-     $logger->warn($method ? "An error occurred while executing \"".$method->full_name."\": $@" : $@);
-              
-     # simply rethrow the error if we're passing through or if we're
-     # throwing and it's already a Froody::Error
-     my $is_froody_error = blessed($@) && $@->isa("Froody::Error");
-     if ($style eq "passthrough") {
-      die $@;
-     } 
-     elsif ($style eq 'throw') 
-     {
-       die $@ if $is_froody_error; 
-       Froody::Error->throw($@);
-     } 
-     # must be creating a response
-     my $err = Froody::Response::Error->new();
-     $err->set_error($@);
-     
-     my $structure = $is_froody_error 
-        ? $repo->get_closest_errortype($@->code)
-        : Froody::ErrorType->new; 
-
-     $err->structure($structure);
-    
-     $response = $err;
-  }
-  $self->cleanup;
+  my $error = $response->isa("Froody::Response::Error") ? $response : undef;
   
-  my $is_an_error;
-  if (!$response->can('status')) {
-    $response->structure($method);
+  if ($error && $style eq 'throw') {
+    $error->throw;
+  }
 
-    my $xml = $response->as_xml->xml;
-    
-    my ($status) = $xml->findnodes('//rsp/@stat');
-    if ($status->nodeValue ne 'ok') {
+  my $is_an_error;
+  if ($response->can('status')) {
+    $is_an_error = $response->status ne 'ok';
+  } else {
+    $response = $response->as_xml; #Response must be representable as XML for now.
+
+    if ($response->status ne 'ok') {
+      my $code = $response->xml->findvalue('/rsp/err/@code');
       $is_an_error = 1;
-      my ($code) = $xml->findnodes('//err/@code');
       # we need to fix our structure
-      $response->structure($repo->get_closest_errortype($code ? $code->nodeValue : '' ));
+      $response->structure($self->repository->get_closest_errortype($code ? $code : '' ));
     }
-  } elsif ($response->status ne 'ok') {
-    $is_an_error = 1;
   }
 
   if ($style eq "throw" && $is_an_error)
@@ -307,16 +517,6 @@ sub _validate_response
   }
 }
 
-=item cleanup
-
-Subclasses should override this method if there are any cleanup tasks that should be
-run after 
-
-=cut
-
-sub cleanup {
-}
-
 =item call( 'method', [ args ] )
 
 Call a method (optionally with arguments) and return a
@@ -331,9 +531,51 @@ sub call {
   my $method = shift;
   my $args = ref $_[0] eq "HASH" ? shift : { @_ };
 
+  $self->_fix_args($method, $args);
+
   my $rsp = $self->dispatch( method => $method, params => $args );
 
   return $rsp->as_terse->{content};
+}
+
+sub _fix_args {
+  my ($self, $method, $args) = @_;
+  for (keys %$args) {
+    next unless (ref($args->{$_}) and blessed($args->{$_}));
+    next if ($args->{$_}->isa("Froody::Upload"));
+    if ($args->{$_}->isa("Class::DBI")) {
+      # this is our typical DWIM case
+      $args->{$_} = $args->{$_}->id;
+    } else {
+      # you can't do this.
+      Froody::Error->throw(
+        'froody.invoke.blessedRef',
+        "Can't pass object '".ref($args->{$_})."' as the '$_' param to method $method",
+      );
+    }
+  }
+}
+
+=item get_methods ( [@filters] )
+
+Provides a list of L<Froody::Method> objects. Optionally, the methods are filtered
+by a list of filter patterns.  If L<Froody::Method::config> was called with 
+a list of filters, the methods will be pre-filtered by that list. If you wish
+to override the configured filters, call this method with C<undef>, or use
+the repository methods directly.
+
+=cut
+
+sub get_methods {
+  my ($self, @filters) = @_;
+
+  unless (@_ > 1 ) {
+    @filters = $self->filters;
+  }
+  if (!defined $_[0]) {
+    @filters = ();
+  }
+  return $self->repository->get_methods(@filters);
 }
 
 
@@ -369,19 +611,17 @@ sub repository
 
 Get/set chained accessor that sets the style of errors that this should use. By
 default this is C<response>, which causes all errors to be converted into valid
-responses.  Other options are C<throw> which turns all errors into
-Froody::Error objects which are then immediatly thrown and C<passthrough> which
-doesn't actually do anything (errors that are thrown continue to be thrown,
-error responses are returned.)
+responses.  The other option is C<throw> which turns all errors into
+Froody::Error objects which are then immediatly thrown.
 
 =cut
 
 sub error_style
 {
    my $self = shift;
-   return $self->{error_style} || "response" unless @_;
+   return $self->{error_style} || "throw" unless @_;
    
-   unless ($_[0] && ($_[0] eq "response" || $_[0] eq "throw" || $_[0] eq "passthrough"))
+   unless ($_[0] && ($_[0] eq "response" || $_[0] eq "throw"))
     { Froody::Error->throw("perl.methodcall.param", "Invalid error style") }
     
    $self->{error_style} = shift;

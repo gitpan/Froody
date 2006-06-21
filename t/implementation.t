@@ -11,11 +11,12 @@
 use strict;
 use warnings;
 
-use Test::More tests => 4;
+use Test::More tests => 6;
 
 package Thingy::API;
 use base qw(Froody::API);
 use Froody::API::XML;
+use Test::Logger;
 sub load { return Froody::API::XML->load_spec(<<'ENDOFSPEC') }
 <spec>
  <methods>
@@ -33,6 +34,12 @@ sub load { return Froody::API::XML->load_spec(<<'ENDOFSPEC') }
    </response>
   </method>
 
+  <method name="wibble.frobniz.validate">
+    <arguments />
+    <response>
+      <just><this>value</this></just>
+    </response>
+  </method>
  </methods>
 </spec>
 ENDOFSPEC
@@ -52,6 +59,17 @@ sub disneyChar
   return $args->{type} eq "Toy Story" ? "Woody" : "Nemo";
 }
 
+sub validate 
+{
+  my $class = shift;
+  my $args = shift;
+
+  return {
+    this => 'foo',
+    ignored => "You won't see me"
+  }
+}
+
 package main;
 
 use Froody::Dispatch;
@@ -59,10 +77,17 @@ my $dispatch = Froody::Dispatch->new();
 my $repos = $dispatch->default_repository();
 ThingyClass->register_in_repository($repos);
 
-is($repos->get_methods, 5, "only one method loaded, and the two reflection methods.");
+is($repos->get_methods, 7, "right number of methods.");
 my $method = $repos->get_method("wibble.frobniz.disneyChar");
 is($method->name, "disneyChar", "method loaded okay");
 isa_ok($method->invoker, "Froody::Invoker::Implementation", "method loaded okay");
 
 my $rsp = $method->call({ type => "Toy Story" });
 like($rsp->render, qr{<char>Woody</char>}, "char back");
+
+$method = $repos->get_method("wibble.frobniz.validate");
+{
+  my $log = Test::Logger->expect(["froody.walker.terse",
+				  warn => qr/unknown key 'ignored' defined/]);
+  is_deeply $method->call({})->content, { this => 'foo' }, "Invalid values don't come out.";
+}

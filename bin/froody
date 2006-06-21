@@ -16,6 +16,7 @@ use Froody::Response::Terse;
 use Froody::Response::PerlDS;
 
 my $client = Froody::Dispatch->new();
+$client->error_style('response');
 
 # process command line options;
 # darn! Neither GetOpt::Std or GetOpt::Long do what I want
@@ -93,8 +94,8 @@ while (defined($ARGV[0]) && $ARGV[0] =~ /^-/)
    if ($arg =~ /^-y(.*)$/)
    {
      die "-y takes no argument. Try -h for help.\n" if length $1;
-     require YAML
-       or die "Need YAML installed to use -y\n";
+     require YAML::Syck
+       or die "Need YAML::Syck installed to use -y\n";
      $yaml = 1;
      next;
    }
@@ -183,7 +184,7 @@ foreach my $fish (1..$n)
   {
     $response = $response->$format;
     if ($yaml)
-     { $_ = YAML::Dump($response->content) }
+     { $_ = Dump($response->content) }
     else
      { $_ = Dumper($response->content) }
   }

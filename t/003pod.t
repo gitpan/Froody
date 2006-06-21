@@ -4,22 +4,28 @@ use strict;
 use Test::More;
 use File::Find::Rule;
 
-eval q(
-	use Test::Pod;
-	use Pod::Coverage::CountParents;
-	1;
-) or plan skip_all => 'Necessary modules not installed';
+my $test_pod = eval 'use Test::Pod; 1';
+my $coverage = eval 'use Pod::Coverage::CountParents; 1';
 
 my @files = File::Find::Rule->file()->name('*.pm', '*.pod')->in('lib');
+plan skip_all => "No modules" unless scalar @files;
 plan tests => ( scalar @files * 3 ) + 1;
 
 my $total_coverage;
 my $total_files;
 
-for my $file (@files) {
-  pod_file_ok( $file );
+# We sort the files to make results predictable. We had a Heisenbug caused by a
+# package jamming methods into another package's namespace; depending on
+# whether the offending package was loaded before or after its victim this test
+# would fail.
+for my $file (sort @files) {
+  SKIP: {
+    skip "Test::Pod not installed", 1 unless $test_pod;
+    pod_file_ok( $file );
+  }
 
   SKIP: {
+    skip "Pod::Coverage::CountParents not installed", 2 unless $coverage;
     skip "$file is not a module", 2 if $file =~ /pod$/;
 
     # read in the file and look for trustmes
@@ -50,7 +56,7 @@ for my $file (@files) {
     if (defined $coverage) {
       ok( $coverage, "$file has POD" );
       ok( $coverage > 0.90, "$file has ".($coverage * 100)."% coverage > 90%" );
-      if ($ENV{SHOW_NAKED}) { diag(map {"Naked sub: $_\n"} $pc->naked) }
+      diag(map {"Naked sub: $_\n"} $pc->naked);
 
       $total_coverage += $coverage;
       $total_files++;
@@ -66,7 +72,11 @@ for my $file (@files) {
 }
 
 #
-my $average_coverage = $total_coverage / $total_files;
-ok( $average_coverage > 0.98,
-  "Average POD coverage ". ( $average_coverage * 100 )."% > 98%" );
+SKIP: {
+  skip "Pod::Coverage::CountParents not installed", 1 unless $coverage;
+  skip "no files with pod", 1 unless $total_files;
+  my $average_coverage = $total_coverage / $total_files;
+  ok( $average_coverage > 0.98,
+    "Average POD coverage ". ( $average_coverage * 100 )."% > 98%" );
+}
 

@@ -13,41 +13,50 @@ A Froody request object that slurps its data from a CGI request.
 package Froody::Request::CGI;
 use warnings;
 use strict;
-use CGI;
 use Froody::Error;
 use Froody::Upload;
 use base qw( Froody::Request );
 
+use CGI;
+
 sub new {
   my $class = shift;
+  my $cgi = shift || CGI->new;
+
   my $self = $class->SUPER::new(@_);
 
-  my %vars = CGI::Vars();
+  my %vars = $cgi->Vars();
+
   my $method = delete $vars{method} || "";
   $self->method($method);
-  
+
+  my $type = delete $vars{'_froody_type'};
+  $self->type($type);
+    
   for (keys %vars) {
 
-    # split multi-values params into a listref
-    my @vals = split("\0",$vars{$_});
-    $vars{$_} = \@vals if (@vals > 1);
-
     # XXX: multiple uploads???
-    if (my $upload = CGI::upload($_)) {
-      my $filename = CGI::param($_);
-      my $type = CGI::uploadInfo($filename)>{'Content-Type'};
+    if (my $upload = $cgi->upload($_)) {
+      my $filename = $cgi->tmpFileName($upload);
+      my $client_filename = "".$cgi->param($_);
+      my $type = ( $cgi->uploadInfo($upload) || {} )->{'Content-Type'};
       $vars{$_} = Froody::Upload
           ->new->fh($upload)
-               ->filename(CGI::tmpFileName($_))
-               ->client_filename($filename)
+               ->filename($filename)
+               ->client_filename($client_filename)
                ->mime_type($type);
+
+    } else {
+      # split multi-values params into a listref
+      my @vals = split("\0",$vars{$_});
+      $vars{$_} = \@vals if (@vals > 1);
     }
   }
 
   # read cookies into the request as well.
-  for (CGI::cookie()) {
+  for ($cgi->cookie()) {
     next unless $_ eq 'cookie_session';
-    $vars{$_} = CGI::cookie($_);
+    $vars{$_} = $cgi->cookie($_);
   }
 
   $self->params(\%vars);

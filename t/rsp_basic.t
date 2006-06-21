@@ -79,7 +79,7 @@ ok(Froody::Error::err("perl.methodcall.param"), "right error thrown")
 ######
 # testing the cookie stuff
 my $frs = Froody::Response::String->new();
-$frs->add_cookie( name => "wibble", value => "bar", expires => "+12M",
+$frs->add_cookie( name => "wibble", value => "bar", expires => "+365d",
                   domain => "opensource.fotango.com", path => "/svn" );
 
 is(@{$frs->cookie},1, "there's a cookie");

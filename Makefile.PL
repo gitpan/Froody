@@ -6,27 +6,35 @@ WriteMakefile
           'INSTALLDIRS' => 'site',
           'NAME' => 'Froody',
           'EXE_FILES' => [
-                           'bin/froody'
+                           'bin/find_froody_exceptions',
+                           'bin/froody',
+                           'bin/froodydoc'
                          ],
           'VERSION_FROM' => 'lib/Froody.pm',
           'PREREQ_PM' => {
-                           'YAML' => 0,
+                           'Email::Valid' => 0,
                            'Test::XML' => 0,
                            'File::Spec' => 0,
                            'HTTP::Server::Simple' => 0,
                            'Error' => '0.15',
-                           'Class::Accessor::Chained' => 0,
+                           'Class::Accessor::Chained::Fast' => 0,
+                           'Class::Data::Inheritable' => 0,
                            'List::MoreUtils' => 0,
                            'LWP::Simple' => 0,
+                           'Module::Pluggable' => 0,
                            'File::Find::Rule' => 0,
+                           'URI' => 0,
                            'Test::Exception' => 0,
-                           'Class::Accessor' => 0,
+                           'YAML::Syck' => 0,
+                           'Template' => 0,
                            'HTTP::Request::Common' => 0,
+                           'HTTP::Date' => 0,
                            'Test::More' => 0,
                            'Test::Differences' => 0,
                            'Params::Validate' => 0,
                            'LWP::UserAgent' => 0,
                            'XML::LibXML' => 0,
+                           'JSON' => 0,
                            'UNIVERSAL::require' => 0
                          }
         )

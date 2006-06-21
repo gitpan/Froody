@@ -2,10 +2,11 @@ package Froody::API::XML;
 use strict;
 use warnings;
 use XML::LibXML;
-use Params::Validate ':types';
 use Froody::Method;
 use Froody::ErrorType;
 use Froody::Response::XML;
+use Froody::Logger;
+my $logger = get_logger("froody.api.xml");
 
 use base qw(Froody::API);
 
@@ -75,17 +76,18 @@ sub load_spec {
    { Froody::Error->throw("perl.methodcall.param", "No xml passed to load_spec!") }
   
   my $parser = $class->parser;
-  my $doc = eval { $parser->parse_string($xml) };
-
-  if ($@)
-    { Froody::Error->throw("froody.xml.invalid", "Invalid xml passed: $@") }
+  my $doc = UNIVERSAL::isa($xml, 'XML::LibXML::Node') ? $xml 
+          : eval { $parser->parse_string($xml) };
+  Froody::Error->throw("froody.xml.invalid", "Invalid xml passed: $@")
+    if $@;
+  $doc->indexElements;
 
   my @methods = map { $class->load_method($_) }
-    $doc->findnodes('/spec/methods/method')
+    $doc->findnodes('//spec/methods/method')
       or Froody::Error->throw('froody.xml.nomethods', "no methods found in spec!");
     
   my @errortypes =map { $class->load_errortype($_) }
-    $doc->findnodes('/spec/errortypes/errortype');
+    $doc->findnodes('//spec/errortypes/errortype');
 
   return (@methods, @errortypes);
 }
@@ -141,12 +143,11 @@ sub load_method {
   if ($example)
   {
     $example->structure($method);
-    weaken($example->structure);
+    weaken($example->{structure});
     $method->example_response($example);
   }
   
-  my ($desc) = $method_element->findnodes("./description");
-  $desc = $desc ? _entity_decode($desc->textContent) : '';
+  my $desc = $method_element->findvalue("./description");
   $desc =~ s/^\s+//;
   $desc =~ s/\s+$//;
   $method->description($desc);
@@ -172,36 +173,34 @@ sub _arguments {
   foreach my $argument_element (@argument_elements)
   {
     # pull our the attributes
-    my ($name_attr)     = $argument_element->findnodes('./@name');
-    my ($optional_attr) = $argument_element->findnodes('./@optional');
-    my ($type_attr)     = $argument_element->findnodes('./@type');
+    my $name     = $argument_element->findvalue('./@name');
+    my $optional = $argument_element->findvalue('./@optional') || 0;
+    my $type     = $argument_element->findvalue('./@type') || 'text';
 
-    # convert the elements to their values, with default values if needed
-    my $type     = $type_attr ? $type_attr->nodeValue : 'text';
-    my $name     = $name_attr->nodeValue;
-    my $optional = $optional_attr ? $optional_attr->nodeValue : 0;
+    # Ugh.  Track this down.
+    $type = 'text' if $type eq 'scalar';
+    my @types = split /,/, $type;
 
     # extract the contents of <argument>...</argument> as the description
-    my $description = $argument_element->textContent;
-    
-    # examine the type and work out what that means
-    my $multiple = ($type eq 'csv' || $type eq 'multipart');
-    $arguments{$name}{multiple} = 1 if $multiple;
+    my $description = $argument_element->findvalue('./text()');
+
+    $arguments{$name}{multiple} = 1 unless $type eq 'text';
     $arguments{$name}{optional} = $optional;
     $arguments{$name}{doc}      = $description;
-    # TODO: There should be some sort of type handling registration system, rather than
-    # hardcoding the user types.
-    $arguments{$name}{usertype} = $type;
-    $arguments{$name}{type}     = $multiple ? ARRAYREF : SCALAR;
-    if ($type eq 'multipart') {
-      $arguments{$name}{callbacks} =
-      { 'attribute "'.$name.'" requires an array of Froody::Upload objects' =>
-        sub { !grep { !UNIVERSAL::isa($_, 'Froody::Upload') } @{$_[0]} } };
+    $arguments{$name}{type} = \@types;
+
+    # XXX: compose the list in Froody::Argument
+    require Froody::Argument;
+    my @TYPES = keys %{ Froody::Argument->_types() };
+    push @TYPES, 'remaining'; # a special case.
+    for my $_type (@types) {
+      Froody::Error->throw("froody.api.unsupportedtype", "The type '$_type' is unsupported")
+        unless grep { $_type eq $_ } @TYPES;
+      if ($_type eq 'remaining') {
+        $arguments{$name}{optional} = 1;
+      }
     }
-    if ($type eq 'remaining') {
-      $arguments{$name}{optional} = 1;
-      $arguments{$name}{type} = HASHREF;
-    }
+
   }
 
   return \%arguments;
@@ -219,26 +218,13 @@ sub _extract_response {
 sub _extract_children {
   my ($class, $structure, $full_name) = @_;
 
-  my @child_nodes = $structure->childNodes;
-  unless (grep { $_->isa('XML::LibXML::Element') } @child_nodes) {
-    my $structure_xml = $structure->textContent;
-    # TODO: After extracting the structure, we should
-    # entity decode all of them and remove this crack
-
-    # we don't need no steenkin' HTML::Entities ;)
-    for ($structure_xml) {
-      $_ = _entity_decode($_);
-
-      # Eeevil - entity encode quotes inside quoted attribute
-      # values
-      s/"([^=><]+)"/ '"' . _entity_encode($1) . '"'/ge;
-    }
-    $structure_xml = '<rsp>'.$structure_xml.'</rsp>';
+  my @child_nodes = grep { $_->isa('XML::LibXML::Element') } $structure->childNodes;
+  unless (@child_nodes) {
+    my $structure_xml = '<rsp>' . $structure->textContent . '</rsp>';
 
     my $structure_doc = $class->parser->parse_string($structure_xml);
-    @child_nodes = $structure_doc->documentElement->childNodes();
+    @child_nodes = grep { $_->isa('XML::LibXML::Element') } $structure_doc->documentElement->childNodes();
   }
-  @child_nodes = grep { $_->isa('XML::LibXML::Element') } @child_nodes;
   Froody::Error->throw("froody.xml", "Too many top level elements in the structure for $full_name")
     unless @child_nodes <= 1;
 
@@ -277,9 +263,14 @@ sub _xml_to_structure_hash {
 
     # If seen, don't reprocess the children and mark it as multi.
     # This assumes that the content of the multiple entries are the same.
-    $result->{$path}{multi} = 1, return
-       if exists $result->{$path};
-    $result->{$path}{attr}{$_} = 1 for ( map { $_->nodeName } $node->attributes);
+    if (exists $result->{$path}) {
+      $result->{$path}{multi} = 1; 
+      return;
+    }
+    for ($node->attributes) {
+      next unless $_;
+      $result->{$path}{attr}{$_->nodeName} = 1;
+    }
     my @children = $node->childNodes;
     $result->{$path}{text} = 1 if grep { $_->isa('XML::LibXML::Text') 
                                         && $_->textContent =~ /\S/ } @children;
@@ -309,32 +300,6 @@ sub _xml_to_structure_hash {
       # TODO: Handling types is a Service level detail.
 }
 
-
-sub _entity_encode {
-  my $str = shift;
-  for ($str) {
-    s/&/&amp;/g;
-    s/</&lt;/g;
-    s/>/&gt;/g;
-    s/'/&apos;/g;
-    s/"/&quot;/g;
-  }
-  return $str;
-}
-
-sub _entity_decode {
-  my $str = shift;
-  for ($str) {
-    s/&lt;/</g;
-    s/&gt;/>/g;
-    s/&apos;/\'/g;
-    s/&quot;/\"/g;
-  }
-  return $str;
-}
-
-
-
 sub _errors {
   my ($class, $method_element) = @_;
 
@@ -346,16 +311,16 @@ sub _errors {
   foreach my $error_element (@error_elements) { 
   
     # extract the attributes
-    my ($code_attr)    = $error_element->findnodes('./@code');
-    my ($message_attr) = $error_element->findnodes('./@message');
+    my $code    = $error_element->findvalue('./@code') || '';
+    my $message = $error_element->findvalue('./@message');
 
     # convert them into a a hash that has the error number as the
     # key, and contains a hashref with a message and description in it
     my $description = $error_element->textContent;
     $description =~ s/^\s+//;
     $description =~ s/\s+$//;
-    $errors{ $code_attr->nodeValue } = {
-      message     => $message_attr ? $message_attr->nodeValue : '', 
+    $errors{ $code } = {
+      message     => $message || '',
       description => $description
     };
   }
@@ -367,10 +332,7 @@ sub _errors {
 # an attribute <method needslogin="1">.  Returns false in all other cases
 sub _needslogin {
   my ($class, $method_element) = @_;
-  my ($needslogin_attr) = $method_element->findnodes('./@needslogin');
-  return 0 unless $needslogin_attr;
-
-  return $needslogin_attr->nodeValue eq '1' ? 1 : 0;
+  return $method_element->findvalue('./@needslogin') || 0;
 }
 
 =item load_errortype
@@ -388,13 +350,21 @@ sub load_errortype  {
   }
   
   # work out the name of the element
-  my ($name) = $et_element->findvalue('./@code')
-    or Froody::Error->throw("froody.xml",
-       "Can't find the attribute 'code' for the error definition within "
-       .$et_element->toString);
+  my $code = $et_element->findvalue('./@code') || '';
 
   my $et = Froody::ErrorType->new;
-  $et->name($name);
+  $et->name($code);
+  my $et_str = $et_element->to_literal();
+  if ($et_str =~ /</) {
+    local $@;
+    eval { 
+      my $new_et = $class->parser()->parse_string(qq{<errortype code="$code">$et_str</errortype>}); 
+      $et_element = $new_et->documentElement();
+    };
+    if ($@) {
+      $logger->warn($@);
+    }
+  }
 
   my $spec = $class->_extract_structure($et_element);
   
@@ -409,7 +379,7 @@ sub load_errortype  {
     # TODO, This encoding is *all* wrong
     my $doc = XML::LibXML::Document->new( "1.0", "utf-8");
     my $rsp = $doc->createElement("rsp");
-    $rsp->setAttribute("stat", "ok");
+    $rsp->setAttribute("stat", "fail");
     $rsp->addChild($et_element);
     $doc->setDocumentElement($rsp);
     $example = Froody::Response::XML->new->xml( $doc );
@@ -433,6 +403,8 @@ This method returns the parser we're using.  It's an instance of XML::LibXML.
 
 {
   my $parser = XML::LibXML->new;
+  $parser->expand_entities(1);
+  $parser->keep_blanks(0);
   sub parser { $parser }
 }
 

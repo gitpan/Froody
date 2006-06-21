@@ -12,7 +12,7 @@ use Test::Exception;
 use Data::Dumper;
 
 # start the tests
-use Test::More tests => 37;
+use Test::More tests => 38;
 
 use_ok("Froody::Response");
 use_ok("Froody::Method");
@@ -150,7 +150,11 @@ $frs->set_string( <<"ENDOFRSP" );
 </rsp>
 ENDOFRSP
 
+
+use Data::Dumper;
+
 my $terse = $frs->as_terse;
+
 isa_ok($terse, "Froody::Response::Terse");
 is_deeply($terse->content, {
    group => "london.pm",
@@ -243,3 +247,12 @@ is_deeply($terse->content,{
 is($terse->structure, $method,"method preserved");
 
 }
+
+use Froody::Response::String;
+my $gunnar = Froody::Response::String->new
+                                     ->set_string(<<GUNNAR);
+<rsp stat="fail">
+  <err msg="Failed to login" code="zimki.error.login.invalid"/>
+</rsp>
+GUNNAR
+is $gunnar->as_xml->status, 'fail', "We should be failing";

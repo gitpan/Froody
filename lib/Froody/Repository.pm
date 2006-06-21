@@ -1,13 +1,16 @@
 package Froody::Repository;
 use base qw(Froody::Base);
 
-use Froody::API::Reflection;
-use Froody::Invoker::Reflection;
-use Froody::Dispatch;
-use Froody::Invoker::Remote;
+use Froody::Reflection;
 
+use Froody::Dispatch;
 use Froody::Method;
 use Froody::ErrorType;
+use Froody::Logger;
+use List::MoreUtils qw(any);
+
+
+my $logger = get_logger('froody.repository');
 
 use strict;
 use warnings;
@@ -24,8 +27,11 @@ Froody::Repository - a repository of Froody::Method objects.
 
   use Froody::Repository;
   my $repository = Froody::Repository->new();
-
+  
   # methods for putting stuff in the repository
+  
+  $repository->register_implementation('Implementation::Package');
+  
   $repository->register_method($froody_method);
   $repository->register_errortype($froody_errortype);
   
@@ -54,27 +60,14 @@ discover L<Froody::Method> instances.
 sub init {
   my $self = shift; 
 
-  ### reflection methods and errortypes ###
-
-  my (@structures) = grep { blessed($_) && $_->isa("Froody::Structure") } 
-      Froody::API::Reflection->load();
-
-  my $invoker = Froody::Invoker::Reflection->new()->repository($self);
-
-  foreach (grep { $_->isa("Froody::Method") } @structures) {
-    #Note: Invoker only holds a weak reference to self -- no memory leaks here. Nope.
-    $_->invoker($invoker); 
-    $self->register_method($_);
-  }
-
-  foreach (grep { $_->isa("Froody::ErrorType") } @structures) {
-    $self->register_errortype($_);
-  }
-
-
   ### default error ###
   
   $self->register_errortype(Froody::ErrorType->new()->name(""));
+
+  ### reflection methods and errortypes ###
+
+  $self->register_implementation('Froody::Reflection');
+  
 
   return $self;
 }
@@ -97,8 +90,15 @@ sub register_method {
 
   Froody::Error->throw("perl.methodcall.param", "you didn't pass a Froody::Method object")
     unless UNIVERSAL::isa($method, 'Froody::Method');
-  
-  $self->{method_hash}{$method->full_name} ||= $method;
+ 
+  my $old_method = $self->{method_cache}{$method->full_name};
+  unless ($old_method)  {
+    $self->{method_cache}{$method->full_name} = $method;
+  } elsif ($old_method->full_name !~ m/^froody\.reflection\./) {
+    my $inv = $old_method->invoker;
+    
+    Froody::Error->throw("perl.method.alreadyregistered", $method->source." was already registered through ".ref $inv);
+  }
 
   return $self;
 }
@@ -114,12 +114,12 @@ sub get_methods {
   my $self = shift;
   
   # return everything if no arguments
-  unless (@_) { return values %{ $self->{method_hash} } }
+  unless (@_) { return values %{ $self->{method_cache} } }
 
   # what methods are we looking for?  Make it a regex if it's not already
   my $query = ref($_[0]) ? shift : Froody::Method->match_to_regex( shift );
   return grep { $_->full_name =~ $query }
-         values %{ $self->{method_hash} };
+         values %{ $self->{method_cache} };
 }
 
 =item get_method($name)
@@ -134,8 +134,8 @@ sub get_method {
   my $self = shift;
   my $name = shift;
 
-  my $method = $self->{method_hash}{ $name }
-    or Froody::Error->throw("froody.invoke.nosuchmethod", "Method '$name' not found",101);
+  my $method = $self->{method_cache}{ $name }
+    or Froody::Error->throw("froody.invoke.nosuchmethod", "Method '$name' not found.");
   return $method;
 }
 
@@ -177,7 +177,7 @@ sub get_errortype {
   my $self = shift;
   my $name = shift;
 
-  my $errortype = $self->{errortypes_hash}{ $name }
+  my $errortype = $self->_errortype_hash->{ $name }
     or Froody::Error->throw("froody.invoke.nosucherrortype", "ErrorType '$name' not found");
   return $errortype;
 }
@@ -191,14 +191,15 @@ arguments, or only the methods matching the query if invoked with an argument.
 
 sub get_errortypes {
   my $self = shift;
+  my $err_hash = $self->_errortype_hash;
   
   # return everything if no arguments
-  unless (@_) { return values %{ $self->{errortypes_hash} } }
+  unless (@_) { return values %{ $err_hash } };
 
   # what methods are we looking for?  Make it a regex if it's not already
   my $query = ref($_[0]) ? shift : Froody::Method->match_to_regex( shift );
   return grep { $_->name =~ $query }
-         values %{ $self->{errortypes_hash} };
+         values %{ $err_hash };
 }
 
 =item get_closest_errortype
@@ -210,17 +211,106 @@ sub get_closest_errortype {
   my $code = shift;
   my @bits = split /\./, $code;
   
+  my $err_hash = $self->_errortype_hash;
+  
   foreach (reverse 0..$#bits)
   { 
      my $string = join '.', @bits[0..$_];
-     return $self->{errortypes_hash}{ $string }
-        if $self->{errortypes_hash}{ $string };
+     return $err_hash->{ $string }
+        if $err_hash->{ $string };
   }
   
   # return the default errortype hash which is always there, as it was
   # created during init.
-  return $self->{errortypes_hash}{""};
+  return $err_hash->{""};
 }
+
+sub _errortype_hash { 
+  my $self = shift;
+  return $self->{errortypes_hash}
+}
+
+=item register_implementation(PACKAGE NAME)
+
+Registers all the methods associated with a given implementation
+and API in this repository.
+
+=cut
+
+sub register_implementation
+{
+  my $self       = shift;
+  my $class      = shift;
+
+  # load the api, if we can.
+  $class->require;
+
+  # what of this API do we implement?
+  my ($api_class, @method_matches) = $class->implements;
+  return unless $api_class; # Allow for superclasses doing crazy things.
+  my $invoker = $class->new();
+
+  return $self->register_api($api_class, $invoker, @method_matches);
+}
+
+=item register_api($api, $invoker, @method_matches)
+
+Registers all the methods associated with a given API.
+
+=cut
+sub register_api {
+  my ($self, $api_class, $invoker, @method_matches) = @_;
+
+  @method_matches = map { Froody::Method->match_to_regex( $_ ) } @method_matches;
+  # load the api
+  $api_class->require
+    or Froody::Error->throw("perl.use", "unknown or broken API class: $api_class");
+
+  # process each thing based on it's type
+  my @structures;
+  foreach my $thingy ($api_class->load())
+  {
+    if (!blessed($thingy) || !$thingy->isa("Froody::Structure")) {
+      $logger->info("$api_class: load() returned the string '$thingy'," 
+                    ."which is not a Froody::Structure");
+      next;
+    }
+    push @structures, $thingy;
+  }
+  $self->load($invoker, \@structures, @method_matches);
+}
+
+
+=item load($invoker, [structures], [method filters])
+
+Loads a set of method and errortype structures into the repository
+
+=cut
+
+sub load {
+  my ($self, $invoker, $structures, @method_matches) = @_;
+  
+  # process each thing based on its type
+  foreach my $thingy (@$structures)
+  {
+    # froody method?  Set the invoker and register it
+    if ($thingy->isa("Froody::Method")) {
+      my $full_name = $thingy->full_name;
+      # Only bind methods marked as being 'implemented' by the implementation.
+      if (@method_matches) {
+        next unless any { $full_name =~ $_ } @method_matches;
+      } 
+      $thingy->invoker($invoker);
+      $self->register_method($thingy);
+    } elsif ($thingy->isa("Froody::ErrorType")) {
+      $self->register_errortype($thingy);
+      next;
+    }
+  }
+
+  return $self;
+} 
+
 
 =back
 

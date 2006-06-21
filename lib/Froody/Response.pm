@@ -8,6 +8,8 @@ use Params::Validate qw(SCALAR);
 use CGI;
 
 use Scalar::Util qw(blessed);
+use Froody::Logger;
+my $logger = get_logger('froody.response');
 
 __PACKAGE__->mk_accessors(qw( cookie ));
 
@@ -152,24 +154,14 @@ sub structure
 {
   my $self = shift;
   return $self->{structure} unless @_;
+  my $struct = shift;
   
-  unless (blessed($_[0]) && $_[0]->isa("Froody::Structure"))
-   { Froody::Error->throw("perl.methodcall.param", "structure only accepts Froody::Structure instances (e.g. Froody::Method or Froody::ErrorType") }
+  unless (blessed($struct) && $struct->isa("Froody::Structure")) { 
+    Froody::Error->throw("perl.methodcall.param", "structure only accepts Froody::Structure instances (e.g. Froody::Method or Froody::ErrorType") 
+  }
    
-  $self->{structure} = shift;
+  $self->{structure} = $struct;
   return $self;
-}
-
-=item present
-
-returns the 'output' of the response as a byte-sequence. Probably xml. By
-default, just calls L<render()>.
-
-=cut
-
-sub present {
-  my $self = shift;
-  $self->render;
 }
 
 =item render
@@ -180,6 +172,14 @@ used as a fall-back to convert between L<Froody::Response> types.
 =cut
 
 sub render { Froody::Error->throw("perl.methodcall.unimplemented") }
+
+=item render_xml
+
+Synonym for C<render>.
+
+=cut
+
+sub render_xml { shift->render }
 
 =back
 

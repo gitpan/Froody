@@ -17,6 +17,7 @@ use Froody::Response::Error;
 
 use HTTP::Request::Common;
 use LWP::UserAgent;
+use Encode qw(encode_utf8);
 my $ua = LWP::UserAgent->new;
 
 sub invoke
@@ -31,31 +32,34 @@ sub invoke
   for my $key (keys %$params) {
     my $arg_data = $method->arguments->{$key};
     my $value = delete $params->{$key};
-
-    next unless $arg_data;
-
-    if ($arg_data->{usertype} eq 'multipart') {
+    # HTTP::Request::Common doesn't like undef
+    $value = '' unless defined $value;
+    no warnings 'uninitialized';
+    if ($arg_data->{type}[0] eq 'multipart') {
+      if (ref($value) eq 'ARRAY' and ref($value->[0])) {
+        $value = $value->[0];
+      }
       $multi ||= 1;
-      $value = [$value] unless ref $value;
+      if (UNIVERSAL::isa($value, "Froody::Upload")) {
+        $value = [ $value->filename, $value->client_filename ];
+      } elsif (!ref($value)) {
+        $value = [$value];
+      }
+    } elsif ($arg_data->{type}[0] eq 'csv' and ref($value) eq 'ARRAY') {
+      $value = join(",", @$value);
     }
-    $params->{$key} = $value;
+    $params->{$key} = ref $value ? $value : encode_utf8($value);
   }
   $params->{method} = $method->full_name; 
 
   # Create a request
-  my $req;
-  if ($multi) {
-    $req = POST $uri, 
-                Content_Type => 'form-data',
-                Content => [ %$params ];
-  } else {
-    $uri->query_form( %$params );
-    $req = GET $uri; 
-  }
-  my $res =$ua->request($req);
+  my $req = POST $uri, 
+    Content_Type => 'form-data',
+    Content => [ %$params ];
+  my $res = $ua->request($req);
 
   unless ($res->is_success) {  
-    Froody::Error->throw("froody.invoke.remote", "Bad response from remote server"); 
+    Froody::Error->throw("froody.invoke.remote", "Bad response from remote server - ". $res->status_line); 
   }
 
   # return whatever we got
@@ -63,6 +67,10 @@ sub invoke
   $frs->set_bytes($res->content);
   $frs->structure($method);
   return $frs;
+}
+
+sub source {
+  shift->url;
 }
 
 =head1 NAME
@@ -94,6 +102,10 @@ An Invoker that calls a remote server to get the Froody::Response.
 =item url
 
 The URL of the REST endpoint.
+
+=item source
+
+Returns where this invoker originated
 
 =back
 

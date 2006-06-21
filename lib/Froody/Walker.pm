@@ -1,11 +1,3 @@
-package Froody::Walker;
-use strict;
-use warnings;
-
-use Froody::Logger;
-
-my $logger = get_logger("froody.walker");
-
 =head1 NAME
 
 Froody::Walker;
@@ -35,11 +27,26 @@ structure, to a final wanted object.
 You need to subclass C<Froody::Walker> to implement a walker which will define
 how the data source is walked and presented.
 
+=cut
+
+package Froody::Walker;
+use strict;
+use warnings;
+
+use base 'Class::Accessor::Chained::Fast';
+
+__PACKAGE__->mk_accessors(qw{spec method});
+
+use Froody::Logger;
+use Froody::Error;
+
+use Scalar::Util qw(weaken);
+
+my $logger = get_logger("froody.walker");
+
 =head2 METHODS
 
 =over
-
-=item $class->new(@arg)
 
 =item $self->walk($spec, $method_name)
 
@@ -47,42 +54,189 @@ Method that's designed to be called on the root node.  Walks the data structure
 we're configured with from the top and returns the new data structure.
 $method_name is used for debugging info.
 
+=cut
+
+sub walk {
+    my ($self, $source) = @_;
+
+    $source = $self->from->init_source($source);
+
+    return $self->to->init_target('') unless $self->toplevels; 
+
+    my $result = $self->walk_node($source, ($self->toplevels)[0]);
+
+    Froody::Error->throw('froody.xml', "walk_node did not return a response")
+      unless defined($result);
+
+    # hey, at this point, we have multiple top-level elements!
+    return $result; # $result->{ $toplevel[0] };  # Terse specific. move to XMLToTerse
+}
+
 =item $self->walk_node($spec, $xpath_key, $method_name)
 
 Walks the data structure this object holds with the specification, starting at
 the part of the spec indicated by $xpath_key.  The $method_name is used for
 debugging info.
 
-=item $self->name
+=cut
 
-=item $self->get_child_walkers
+sub walk_node {
+    my ($self, $source, $xpath_key, $parent_target) = @_;
+    $logger->info("Walking path '$xpath_key' into source '$source'");
+    my $target = $self->to->init_target($xpath_key, $parent_target)
+      or Froody::Error->throw('froody.xml', "init_target failed to create a target");
 
-Returns a child walker node for each child element of the data structure
-that we hold.
+    # get the part of the spec for where we are now looking at
+    my $global_spec = $self->spec || {};
+    my $spec = $global_spec->{ $xpath_key } || $self->default_spec();
 
-=item calculate_value
+    $self->from->validate_source($source, $xpath_key);
 
-Set the opaque data structure value from the original data structure value.
-i.e. copy the text across from one node to the other.
+    # get text node (simplest case)
+    if (!$spec or $spec->{text}) {
+      $logger->info("getting text node");
+      my $value = $self->from->read_text($source, $xpath_key);
+      if (defined($value)) {
+        $value = "$value";
+        $logger->info("  got '$value'");
+        $target = $self->to->write_text($target, $xpath_key, $value);
+        Froody::Error->throw('froody.xml', "write_text did not return a target")
+          unless defined($target);
+      }
+      # if the spec is empty, assume a single text node.
+      return $target unless $spec;
+    }
 
-=item calculate_attribute($name)
+    # the attributes are easy.  We just pass them each on.
+    # TODO: Work out if we need to encode these
+    
+    # HANDLE all simple values.
+    for my $attr (reverse @{ $spec->{attr} }) {
+      $logger->info("Getting attribute '$attr'");
+      my $value = $self->from->read_attribute($source, $xpath_key, $attr);
+      next unless defined($value);
+      $value = "$value";
+      $logger->info("  got $value");
+      $target = $self->to->write_attribute($target, $xpath_key, $attr, $value)
+        or Froody::Error->throw('froody.xml',"write_attribute did not return a target");
+    }
 
-Set the walker node attribute in the opaque datastructure called $name from
-the original data structure
+    for my $element (@{ $spec->{elts} }) {
+      $logger->info("getting element $element");
+      my $local_xpath = $xpath_key ? "$xpath_key/$element" : $element;
+      my @local_source = $self->from->child_sources($source, $xpath_key, $element )
+        # if there's no source, we don't make a target - no empty hashes,
+        # xml nodes, etc, etc.
+        or next;
+      if (@local_source > 1 and !$global_spec->{$local_xpath}{multi}) {
+         Froody::Error->throw('froody.xml', 
+         "got multiple entries for path '$local_xpath', but the spec suggests there should be only one");
+      }
+      for my $this_source (@local_source) {
+        Froody::Error->throw('froody.xml', "source for path '$local_xpath' is undefined")
+          unless defined($this_source);
+        $logger->info("local source '$this_source'");
+        my $local_target = $self->walk_node( $this_source, $local_xpath, $target );
+        $target = $self->to->add_child_to_target( $target, $xpath_key, 
+                                                 $element, $local_target )
+          or Froody::Error->throw('froody.xml', "add_child_to_target did not return a target");
+      }
+    }
+    $logger->info("done walking path $xpath_key");
+    return $target;
+}
 
-=item associate_opaque_ds($name => $opaque_ds, $multi)
+=item from (Froody::Walker::Driver)
 
-Set the value of child C<$name> to $childvalue. C<$multi> is true if the child
-is declared to have multiple values.
+Sets the source driver.
 
-=item is_leaf
+=cut
 
-Returns true if the node is leaf.
+sub from {
+  my $self = shift;
+  
+  if (@_) {
+    $self->{from} = shift;
+    $self->{from}{walker} = $self;
+    weaken( $self->{from}{walker} );
+    return $self
+  }
+  return $self->{from};
+}
 
-=item opaque_ds
+=item to (Froody::Walker::Driver)
 
-Returns the opaque datastructure that this walker has constructed to
-represent the new data source.
+Sets the target driver.
+
+=cut
+
+sub to {
+  my $self = shift;
+  
+  if (@_) {
+    $self->{to} = shift;
+    $self->{to}{walker} = $self;
+    weaken( $self->{to}{walker} );
+    return $self;
+  }
+  return $self->{to};
+}
+
+=back
+
+=head2 Utility methods
+
+Small methods that get called a lot from subclasses.
+
+=over
+
+=item spec_for_xpath( path )
+
+Returns the local method spec for the given xpath. Returns the
+default method spec (text-only node) if there is no spac for that
+path.
+
+=cut
+
+sub spec_for_xpath {
+  my ($self, $xpath) = @_;
+  my $spec = $self->spec->{$xpath} if $self->spec && $xpath;
+  return $spec || $self->default_spec();
+}
+
+=item toplevels()
+
+return a list of the top-level node names in the response XML.
+
+=cut
+
+sub toplevels {
+  my $self = shift;
+  
+  # look for the toplevel in the spec.  If we've got more than one, panic!
+  my @toplevel = grep m{^[^/]+$}, keys %{ $self->spec };
+
+  if (@toplevel > 1) {
+    Froody::Error->throw("froody.xml", 
+                         "invalid Response spec (multiple toplevel nodes!)")
+  }
+  
+  $self->{spec}{''} = {
+    elts => \@toplevel,
+    attr => [],
+    text => 0,
+  };
+  
+  return @toplevel;
+}
+
+=item default_spec()
+
+Returns the default Froody spec (a text-only node)
+
+=cut
+
+sub default_spec { return { text => 1, attr => [], elts => [] } };
 
 =back
 
@@ -108,102 +262,5 @@ the same terms as Perl itself.
 L<Froody>, L<Froody::Response::Terse>
 
 =cut
-
-sub walk {
-    my ($self, $global_spec, $method) = @_;
-    
-    # look for the toplevel in the spec.  If we've got more than one, panic!
-    my @toplevel = grep m[^[^/]+$], keys %{ $global_spec };
-    my $toplevel = shift(@toplevel)
-      or return;
-    if (@toplevel)
-     { Froody::Error->throw("froody.xml", "invalid Response spec (multiple toplevel nodes!)") }
-
-    $self->{name} = $toplevel;
-    
-    return $self->walk_node($global_spec, $toplevel, $method);
-}
-
-# this is the function that knows how to follow the specification
-sub walk_node {
-    my ($self, $global_spec, $xpath_key, $method) = @_;
- 
-    # get the part of the spec for where we are now looking at
-    my $spec = $global_spec->{ $xpath_key } || { text => 1 };
-
-    # THE BASE CASE (are we nearly there yet?)
-    #if ($self->is_leaf) {
-    #  $self->calculate_value;
-    #  return $self->opaque_ds;
-    #}
-
-    # the attributes are easy.  We just pass them each on.
-    # TODO: Work out if we need to encode these
-    $self->calculate_attribute($_) for @{ $spec->{attr} };
- 
-    # build this data structure, grouping elements that have the same name
-    # and creating new walkers for each of the nodes that were in the data
-    # structure we were transforming from
-    # $child_walkers = {
-    #   nodename     => [ $walker1, $walker2, $walker3 ],  # all walkers named 'nodename'
-    #   othernodname => [ $walker4, $walker5, $walker6 ],  # all walkers named 'othernodename'
-    # };
-    my $child_walkers = {};
-    foreach ($self->get_child_walkers) {
-      push @{ $child_walkers->{ $_->name } }, $_;
-    }
-    
-    # go through the specification processing each of the elements
-    foreach my $element_name (@{ $spec->{elts} }) {
-    
-      # work out the full xpath_key for this element
-      my $newname = "$xpath_key/$element_name";
-
-      ###
-      # check for missing bits
-      
-      # are we expecting more than one of them?
-      my $new_ismulti = $global_spec->{ $newname }            # there
-                        && $global_spec->{ $newname }{multi}; # has multi flag
-      
-      # does that exist? Warn if it doesn't
-      if (!exists $child_walkers->{ $element_name } && !$new_ismulti) {
-        $logger->info("$method: the response is missing element '$element_name'");
-        next;
-      }
-      
-      # did we get too many elements back?
-      if (!$new_ismulti && @{ $child_walkers->{ $element_name } } > 1 ) {
-        Froody::Error->throw("froody.xml", "got multiple entry but spec say it's single")
-      }
-      
-      ###
-      # walk child nodes
-
-      # recurse for all the elements of that name
-      for my $child (@{ $child_walkers->{ $element_name } }) {
-
-        # walk that element, and get what that creates back
-        my $opaque_ds = $child->walk_node($global_spec, $newname, $method);
-        
-        # add that a child element of the current destination node
-        $self->associate_opaque_ds($child->name => $opaque_ds, $new_ismulti);
-      }
-
-      # we've successfully processed it.  Remove it from the list of things
-      delete $child_walkers->{ $element_name };
-    }
-
-    # okay, if we've still got child walkers after we've iterated over the
-    # elements we're expecting from the spec and processed the ones that
-    # matched then we've got ones that wern't in the spec.  Kick up a fuss
-    if (%$child_walkers) {
-      $logger->info("$method: unexpected child '$_' found within '$xpath_key'") 
-        for keys %$child_walkers;
-    }
-
-    $self->calculate_value if $spec->{text};
-    return $self->opaque_ds;
-}
 
 1;

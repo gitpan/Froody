@@ -76,13 +76,13 @@ foreach my $filename (@files)
   close $fh;
   
   # does this contain our standard copyright disclaimer?
-  ok(index($file, <<'ENDOFSTRING') != -1, "$filename contains copyright");
-Copyright Fotango 2005.  All rights reserved.
-
-Please see the main L<Froody> documentation for details of who has worked
-on this project.
-
-This module is free software; you can redistribute it and/or modify it under
-the same terms as Perl itself.
-ENDOFSTRING
+  ok($file =~ m{ 
+\QCopyright Fotango 200\E\d.\Q  All rights reserved\E.
+\s*
+\QPlease see the main L<Froody> documentation for details of who has worked
+on this project.\E
+\s*
+\QThis module is free software; you can redistribute it and/or modify it under
+the same terms as Perl itself.\E
+}mx, "$filename contains copyright");
 }

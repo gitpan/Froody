@@ -17,17 +17,21 @@ sub load {
     ->arguments({
       one => {
         optional => '0',
+        type => ['text'],
         multiple => '0',
         documentation => 'simple value',
       },
       two => {
         optional => '1',
+        type => ['text'],
         multiple => '1',
         documentation => 'multiple value',
       }})
     ->structure({
         value => {
-          text => 1
+          text => 1,
+          elts => [],
+          attr => [],
         }
       })
     ->needslogin(0)

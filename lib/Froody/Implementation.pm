@@ -3,66 +3,87 @@ package Froody::Implementation;
 use strict;
 use warnings;
 
-our $VERSION = "0.01";
+use base qw(
+  Froody::Invoker::Implementation  
+  Class::Data::Inheritable
+  Class::Accessor
+);
 
 use Scalar::Util qw(blessed);
-use List::MoreUtils qw(any);
-
+use UNIVERSAL::require;
 use Froody::Error;
-
 use Froody::Logger;
 my $logger = Froody::Logger->get_logger("Froody::Implementation");
 
-use UNIVERSAL::require;
-# NOTE: this is not a subclass of Froody::Base!
-# people should be able to use their own superclass for new et al
+our $IMPLEMENTATION_SUPERCLASS = 1;
+our $VERSION = "0.01";
+
+# ensure that every context has a new copy of $self, or you'll get nasty
+# issues when instance vars hang around and break stuff.
+sub create_context {
+  my $self = shift;
+  $self = $self->new;
+  return $self->SUPER::create_context(@_);
+}
+
+__PACKAGE__->mk_classdata( 'plugins' );
+__PACKAGE__->mk_classdata( 'plugin_methods' );
+
+sub register_plugin {
+  my ($class, $plugin, @args) = @_;
+  $plugin->require or die $@;
+  $class->plugins( [] ) unless $class->plugins;
+  my $instance = $plugin->new($class, @args);
+  Carp::carp("plugin '$plugin' (of class $plugin) is not a plugin")
+      unless $instance->isa('Froody::Plugin');
+  push @{$class->plugins}, $instance;
+}
+
+sub pre_process {
+  my ($self, $method, $params) = @_;
+  
+  for (@{$self->plugins || []}) {
+      $_->plugin_pre_process($self, $method, $params);
+  }
+
+  return $self->SUPER::pre_process($method, $params);
+}
+
+sub post_process {
+  my $self = shift;
+
+  my $ret = $self->SUPER::post_process(@_);
+  for (reverse @{$self->plugins || []}) {
+      $_->plugin_post_process($self, @_);
+  }
+
+  return $ret;
+}
+
+sub error_handler {
+  my $self = shift;
+
+  my $ret = $self->SUPER::error_handler(@_);
+  for (reverse @{$self->plugins || []}) {
+      $_->plugin_error_handler($self, @_ );
+  }
+
+  return $ret;
+}
 
 sub register_in_repository
 {
   my $class       = shift;
   my $repository  = shift;
 
-  # what of this API do we implement?
-  my ($api_class, @method_matches) = $class->implements;
-  return unless $api_class; # Allow for superclasses doing crazy things.
-  @method_matches = map { Froody::Method->match_to_regex( $_ ) } @method_matches;
+  $repository->register_implementation($class);
 
-  # load the api
-  $api_class->require
-    or Froody::Error->throw("perl.use", "unknown or broken API class: $api_class");
+  for (@{$class->plugin_methods || [] }) {
+    next if eval { $repository->get_method($_->full_name) };
+    $repository->register_method($_);
+  }
 
-  # create an invoker instance
-  my $invoker_class = $class->invoker_class;
-  $invoker_class->require
-    or Froody::Error->throw("perl.use", "unknown or broken Invoker class: $invoker_class");
-  my $inv = $invoker_class->new()
-                          ->delegate_class($class);
-
-  # process each thing based on it's type
-  foreach my $thingy ($api_class->load())
-  {
-    # froody method?  Set the invoker and register it
-    if (blessed($thingy) && $thingy->isa("Froody::Method"))
-    {
-      my $full_name = $thingy->full_name;
-      next unless any { $full_name =~ $_ } @method_matches;
-      $repository->register_method($thingy);
-      $thingy->invoker($inv);
-      next;
-    }
-    
-    # froody errortype?  register the error type
-    if (blessed($thingy) && $thingy->isa("Froody::ErrorType"))
-    {
-      $repository->register_errortype($thingy);
-      next;
-    }
-
-    # hmm, unknown
-    $logger->info("unknown thingy back from ->load: $thingy");
- }
-
- return
+  return
 }
 
 sub implements {
@@ -70,10 +91,39 @@ sub implements {
                         "You must define an 'implements' method in '$_[0]'")
 }
 
-# this is defined here because someday someone might subclass
-# Froody::Invoker::Implementation and it would be nice to not force
-# them to rewrite Froody::Implementation
-sub invoker_class { "Froody::Invoker::Implementation" }
+# can is documented
+# override 'can' so the invoker gets the right coderef
+sub can {
+    my $self = shift;
+    my $class = ref($self) ? ref($self) : $self;
+    no strict 'refs';
+    my $map = \%{$class.'::FROODY_METHOD_MAPS'};
+    return $map->{$_[0]} if exists $map->{$_[0]};
+    # fallback
+    return $self->SUPER::can(@_);
+}
+
+# MODIFY_CODE_ATTRIBUTES is documented
+# in perldoc attributes
+
+sub MODIFY_CODE_ATTRIBUTES {
+    my ($pkg, $code, @attr) = @_;
+    my @unwanted;
+    no strict 'refs';
+    no warnings 'once';
+    for my $attr (@attr) {
+      my ($name, $info) = $attr =~ m/^(\w+)\((.*)\)/
+          or warn "unknown attribute $attr";
+      if ($name eq 'FroodyMethod') {
+          my $map = \%{$pkg.'::FROODY_METHOD_MAPS'};
+          $map->{$info} = $code;
+      }
+      else {
+          push @unwanted, $attr;
+      }
+    }
+    return @unwanted;
+}
 
 1;
 
@@ -83,7 +133,6 @@ __END__
 # names to show we've documented them, but it doesn't work well with the
 # tutorial style of the current pod.  Let's just declare they're documented
 # with the magic strings in the following comments:
-#
 # register_in_repository is documented
 
 =head1 NAME
@@ -111,19 +160,35 @@ Froody::Implementation - define Perl methods to implement Froody::Method
      $now->set_time_zone($args->{time_zone}) if $args->{time_zone};
      return $now->datetime;
   }
+
+You may also load plugins to do some of the work for you:
   
-  ...
+  __PACKAGE__->register_plugin("Froody::Plugin::Sasquatch", shoe_size => 25 );
+  
+  sub explore {
+    my ($self, $params) = @_;
+    return $self->find_bigfoot( $params->{shoe_size} );
+  }
 
 =head1 DESCRIPTION
 
 This class is a simple base class that allows you to quickly and simply
 provide code for Froody to run when it needs to execute a method.
 
+You can use a plugin if you want some processing for each of the methods (or a
+large portion of the methods). Typical plugins will perform functions like
+session management and user authentication (see, for instance,
+L<Froody::Plugin::Session> and L<Froody::Plugin::Auth>). Plugins have the
+ability to add accessors to your implementation class and instance, and can
+perform functions in the 'pre_process' stage of your application. (If you
+override pre_process yourself, be sure to call $self->SUPER::pre_process for
+the plugins to work.)
+
 =head2 How to write your methods
 
-It's fairly straightforward to write methods for Froody, and is best demonstrated
-with an example.  Imagine we've got a Froody::Method that's been defined
-like so:
+It's fairly straightforward to write methods for Froody, and is best
+demonstrated with an example.  Imagine we've got a Froody::Method that's been
+defined like so:
 
   package PerlService::API;
   use base qw(Froody::API::XML);
@@ -153,13 +218,19 @@ We are now ready to start writing a class implementing this API:
   
   sub implements { "MyCompany::API" => "mycompany.timequery.datetime" }
 
-The methods will be called with two parameters, a
-L<Froody::Invoker::Implementation> object and a hashref containing the method
-arguments.  The arguments will have already been pre-processed to verify that
-they are all there and of the right type, for example. Look at
-L<Froody::Invoker::Implementation> if you want to change the behaviour of this
-pre-processing (you can use this to implement authentication common for all
-methods, for example).
+  sub hello {
+    ...
+  }
+
+  sub some_get_function :FroodyMethod(get) {
+    ...
+  }
+
+The methods will be called with two parameters: self and a hashref containing
+the method arguments.  The arguments will have already been pre-processed to
+verify that they are all there and of the right type, for example (all
+registerred plugins also have a chance at doing their own pre-processing before
+the method is called). 
 
 =head2 Abstract methods
 
@@ -176,23 +247,22 @@ implemented.
 
 =back
 
-=head2 Instance methods
+=head2 METHODS
 
 =over
 
-=item invoker_class()
+=item register_plugin( plugin_class, [ plugin params ] )
 
-Returns the class of the invoker. Override this if you need to do
-fancy checking in the invoker (for sessions or similar).
+  __PACKAGE__->register_plugin("Froody::Plugin::Session", session_class => "My::Session::Class" );
+  
+Adds a plugin to this class. The first parameter is the classname of the
+plugin to add, all remaining parameters are passed to the plugin class's
+constructor, and should be documented in the perldoc for that plugin.
+See L<Froody::Plugin> about plugins.
 
 =back
 
-
 =head1 BUGS
-
-You can't use this to run code for a Froody::Method whose full name
-ends with ".implements", ".invoker_class" or ".register_in_repository" as
-those methods are special.  Sorry.
 
 Please report any bugs you find via the CPAN RT system.
 L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Froody>
@@ -209,7 +279,7 @@ the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Froody>, L<Froody::Invoker::Implementation>
+L<Froody>
 
 =cut
 

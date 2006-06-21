@@ -33,12 +33,23 @@ dies on error or fatal, and ignores everything esle.
 =cut
 
 # try to load logger
-eval { require Logger };
+eval { require Logger; require Test::Logger };
 
 # if that didn't work, pretend with the compat module
 *Logger::get_logger = sub { 'Froody::Logger::Compat' }
-  unless defined(&Logger::get_logger);
+  unless Logger->can('get_logger');
 
+use List::Util 'sum';
+
+unless (Test::Logger->can('expect')) {
+  *Test::Logger::expect =
+    sub {
+      my $class = shift;
+      my $Tester = Test::Builder->new();
+      $Tester->skip('Logger not available');
+    };
+  $INC{'Test/Logger.pm'} = __FILE__;
+}
 # our get logger is the same as whatever Logger's is
 *get_logger = *Logger::get_logger;
 
@@ -52,8 +63,10 @@ BEGIN {
 
 my $ignore  = sub { return };
 my $warn    = sub { shift; goto \&Carp::carp };
+my $carp    = sub { shift; goto \&Carp::carp };
 my $die     = sub { shift; goto \&CORE::die };
 my $confess = sub { shift; goto \&Carp::confess };
+my $croak   = sub { shift; goto \&Carp::croak };
 
 *debug      = $ignore;
 *info       = $ignore;
@@ -62,6 +75,8 @@ my $confess = sub { shift; goto \&Carp::confess };
 *fatal      = $die;
 *logconfess = $confess;
 *logdie     = $die;
+*logcarp    = $carp;
+*logcroak   = $croak;
 
 }
 

@@ -23,7 +23,7 @@ use Froody::Error;
 use Froody::Logger;
 my $logger = get_logger("froody.base");
 
-use base qw( Class::Accessor::Chained );
+use base qw( Class::Accessor::Chained::Fast );
 
 use UNIVERSAL::require;
 
@@ -131,52 +131,6 @@ sub _validate {
     Froody::Error->throw("perl.methodcall.param", $@);
   }
   return %h;
-}
-
-=item require_module($module_name, $needed_method_name)
-
-Loads the named module off of disk, or throws a nice error if
-it can't for some reason.  Checks to see if the module supports
-the needed method name too.
-
-=cut
-
-sub require_module {
-  my $self        = shift;
-  my $module_name = shift;
-  my $method_name = shift;
-
-  # are we already loaded?  Sweet.
-  {
-    no strict 'refs';
-    return if %{"$module_name\::"};
-  }
-  # use the UNIVERSAL::require module to require the module
-  # this returns false if the require fails, but this can be _both_ because
-  # there were errors, _and_ if the file we expected doesn't exist, but
-  # handlers _might_ be defined in differently named files.
-  $module_name->require;
-
-  if ( $UNIVERSAL::require::ERROR ) {
-    $logger->error("Error compiling module $module_name: $UNIVERSAL::require::ERROR");
-    Froody::Error->throw("perl.use", "module $module_name not found");
-  }
-
-  # now check to see if there is a package of the right name loaded.
-  {
-    no strict 'refs';
-    unless (%{"$module_name\::"}) {
-      # no stash defined, thus there's no package with the right name loaded.
-      Froody::Error->throw("perl.use", "module $module_name does not exist");
-    }
-  }
-
-  # if there was a syntax error, it looks like the stash _is_ defined, but
-  # the module won't be able to do a method call.
-  unless ( $module_name->can($method_name) ) {
-    $logger->error("Error compiling module $module_name: $UNIVERSAL::require::ERROR");
-    Froody::Error->throw("perl.use", "module $module_name cannot '$method_name'");
-  }
 }
 
 1;

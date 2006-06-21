@@ -7,7 +7,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 9;
+use Test::More tests => 10;
 use Test::Exception;
 
 use Froody::Repository;
@@ -22,12 +22,12 @@ my $repo = $client->repository;
 
 $repo->register_method($_) for Other->load();
 
-is scalar $repo->get_methods(), 5, 'One method plus the reflection methods';
+is scalar $repo->get_methods(), 6, 'One method plus the reflection methods';
 is scalar $repo->get_methods(qr'^reflection'), 0, 'partial query';
 is scalar $repo->get_methods(qr'^other'), 1, 'partial query';
 is scalar @{
     $client->call('froody.reflection.getMethods')->{method}
-  }, 5, '1 method plus reflection ones';
+}, 6, '1 method plus reflection ones';
 
 my $method = $repo->get_method('other.object.method');
 
@@ -40,4 +40,7 @@ throws_ok {
 } qr/Method 'Ack.Bar' not found/;
 
 isa_ok $method, 'Froody::Method';
+
+ok my $ret = $client->call('froody.reflection.getSpecification');
+
 

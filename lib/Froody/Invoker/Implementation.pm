@@ -6,56 +6,58 @@ use warnings;
 
 use File::Spec;
 use Froody::Response::Terse;
-
+use Carp qw( croak );
 use Froody::Error;
 use Froody::Logger;
+use Params::Validate qw(:all);
+use Scalar::Util qw(blessed);
+use List::MoreUtils qw(any);
+use Froody::Upload;
 my $logger = Froody::Logger->get_logger('froody.invoker.implementation');
 
 use constant response_class => 'Froody::Response::Terse';
 
-__PACKAGE__->mk_accessors(qw( delegate_class ));
 
-use Scalar::Util qw(blessed);
+sub get_invoke_function {
+    my ($self, $module, $method) = @_;
+    return $module->can($method->name);
+}
 
 sub invoke {
-  my ($self, $method, $params) = @_;
+  my ($self, $method, $params, $metadata) = @_;
  
   # load the module if we need to
   my $module = $self->module($method);
   
   # get the perl code we're actually going to call
-  my $func = $module->can($method->name) or
+  my $func = $self->get_invoke_function($module, $method) or
       $logger->logdie("no such method: ".$method->name." in $module");
 
   # create the context object, and return the instance that you
   # can call the other methods on.  By default, this simply returns
   # the current object (i.e. $invocation is the same as $self)
   my $invocation = $self->create_context($method->full_name, $params);
-  my $response;
 
-  # run the gauntlet
-  eval {
+  my $data = eval {
+    # run the gauntlet
     # munge the arguments
     $invocation->pre_process($method, $params);
     
     # call the perl code
-    my $data = $func->($invocation, $params);
-    
-    # munge the results
-    $response = $invocation->post_process($method, $data);
-    
-    # store extra stuff in the response (e.g. cookies)
-    $invocation->store_context($response);
+    return $invocation->$func($params, $metadata);
+
   };
+
+  my $response;
+
   if ($@) {
-      $invocation->error_handler($method->full_name, $@);
-      unless ( ref $@ && $@->isa("Froody::Error") ) {
-        Froody::Error->throw("perl.methodcall", 
-          "While calling ".$method->full_name.", an error was not caught: $@");
-      }
+    $response = $invocation->error_handler($method, $@, $metadata);
+  } else {
+    $response = $invocation->post_process($method, $data, $metadata);
   }
 
-  die $@ if $@;
+  # store extra stuff in the response (e.g. cookies)
+  $invocation->store_context($response);
 
   return $response;
 }
@@ -64,7 +66,13 @@ sub invoke {
 # these are all helper methods for this particular implmentation
 # that are either called directly or indirectly from invoke
 
-sub error_handler {}
+sub error_handler {
+  my ($self, $method, $error, $metadata) = @_;
+  # TODO - error_class should be an implementation / invoker method, not
+  # on the dispatcher!!
+  my $error_class = $metadata->{dispatcher}->error_class;
+  return $error_class->from_exception( $error, $metadata->{repository} );
+}
 
 sub create_context {
   my ($self, $params) = @_;
@@ -75,66 +83,71 @@ sub store_context {
   return
 }
 
-sub module {
-  my ($self, $method) = @_;
-
-  # do a quick module conversion
-  my $module = $self->delegate_class;
-
-  # require that module and return it.
-  $self->require_module($module, $method->name);
-
-  return $module;
-}
-
-use Params::Validate qw(:all);
-
 sub pre_process {
   my ($self, $method, $params) = @_;
   my $spec = $method->arguments;
-  for my $arg (grep {$spec->{$_}{multiple}} keys %$spec) {
-      if (defined $params->{$arg}) {
-          if (!ref($params->{$arg})) { # csv
-              $params->{$arg} = [ split(/\s*,\s*/, $params->{$arg}) ];
-          }
-          elsif (ref($params->{$arg}) ne 'ARRAY') {
-              $params->{$arg} = [$params->{$arg}];
-          }
-      }
-  }
-  $self->verify_params( $spec, $params );
-}
 
-sub verify_params {
-  my ($self, $spec, $params) = @_;
-
-  # is there a special 'remainder' type?
-  my ($remainder) = grep { $spec->{$_}{usertype} eq 'remaining' } keys %$spec;
-
-  # filter out those not in spec, adding to the 'remainder' param, if
-  # present.
-  for (grep { !exists $spec->{$_} } keys %$params) {
-    if ($remainder) {
-      $params->{$remainder}{$_} = delete $params->{$_};
-    } else {
-      delete $params->{$_};
-    }
+  # you can't send 'undef' across HTTP, so all the param validators assume
+  # that undef isn't a valid value for a param. This seems reasonable. For
+  # maximum DWIM, remove undef vaules, so that the implementation thinks that
+  # they weren't passed.
+  for (keys %$params) {
+    delete $params->{$_} unless defined($params->{$_});
   }
 
-  local $SIG{__DIE__} = sub {
-    my $error = shift;
-    my $param;
-    if (($param) = $error =~ m/parameter '(.+)' missing/) {
-      Froody::Error->throw("perl.methodcall.param", "Missing argument: $param");
-    }
-    elsif (($param) = $error =~ m/'(.+)' parameter .*allowed/) {
-      Froody::Error->throw("perl.methodcall.param", "Bad argument type: $param");
-    }
-    $logger->warn("weird params error $error");
-    Froody::Error->throw("perl.methodcall.param", "Bad params");
+  # special case for remainder;
+  my ($remainder) = grep { $spec->{$_}{type}[0] eq 'remaining' } keys %$spec;
+
+  my @errors;
+  our $argname;
+  my $check = sub {
+    my ($test, $message) = @_;
+    return 1 if $test;
+    push @errors, { name => $argname, -text => $message};
+    return;
   };
 
-  validate_with ( params => $params, spec => $spec );
+  # it'll always be a hashref.
+  $params->{$remainder} = {} if $remainder;
+  for $argname (grep { !exists $spec->{$_} } keys %$params) {
+    if ($remainder) {
+      $params->{$remainder}{$argname} = delete $params->{$argname};
+    } else {
+      $check->(!$remainder, "Unexpected argument.");
+      delete $params->{$argname};
+    }
+  }
+
+  require Froody::Argument;
+  for $argname (keys %$spec) {
+    my $param = $params->{$argname};
+    if (!defined($param)) {
+      $check->( $spec->{$argname}{optional}, "Missing argument." );
+      next;
+    }
+    for my $type (@{$spec->{$argname}{type}}) {
+      next if $type eq 'remaining';
+      # XXX: make the type plugin decalre this
+      if (ref($param) eq 'ARRAY' && any { $type eq $_ } qw(text number)) {
+        for (0..$#{$param}) {
+          $param->[$_] = Froody::Argument->process($type, $param->[$_], $check);
+        }
+      }
+      else {
+        $param = Froody::Argument->process($type, $param, $check);
+      }
+    }
+    $params->{$argname} = $param;
+  }
+
+  if (@errors) {
+    my $errdata = { error => [ @errors ] };
+    Froody::Error->throw("perl.methodcall.param", 
+                         "Error validating incoming parameters",
+                         $errdata);
+  }
+
+  return;
 }
 
 sub post_process {
@@ -151,6 +164,18 @@ sub post_process {
   $response->content($data);
   $response->structure($method);
   return $response;
+}
+
+
+sub module {
+  my ($self, $method) = @_;
+
+  unless ( $self->can($method->name) ) {
+    my $module = ref $self || $self;
+    Froody::Error->throw("perl.use", "module $module cannot '" . $method->name . "'");
+  }
+
+  return $self;
 }
 
 1;
@@ -198,10 +223,15 @@ going on from Froody's point of view.
 
 =over
 
-=item $self->delegate_class
+=item $self->repository
 
-A get/set accessor that gets/sets what class the Perl code that actually
-implements the code here is created.
+A get/set accessor that gets/sets what repository this invoker is
+associated with.  This is a weak reference.
+
+=item $self->get_invoke_function( name )
+
+returns the function to be called to invoke a method. Simply returns
+the result of 'can' in the default implementation.
 
 =item $self->module($method)
 
@@ -219,18 +249,9 @@ management in C<store_context>.
 Serialize the current context into C<$response>.  By default this does
 nothing, you can override this and add a cookie to the response object.
 
-=item $self->verify_params($spec, $params)
-
-Run Params::Validate with the the given spec.  By default this is
-called in C<pre_process>, and will filter out params that is not in the
-spec.
-
 =item $context->pre_process($method, $params)
 
-Called by C<invoke> before the actual method call.  C<verify_params> is
-called by default.  C<$params> is a hashref and can be modified to be
-passed in for C<invoke>.  Currently the split of comma-separated
-values (type=multiple) arguments is also handled here.
+Called by C<invoke> before the actual method call.
 
 =item $context->post_process($method, $data)
 
@@ -244,7 +265,7 @@ specification and the data returned from the method.
 =head1 SEE ALSO
 
 L<Froody::Repository>, L<Froody::API> and for other implementations
-L<Froody::Implmentation::OneClass> and L<Froody::Implementation::Remote>
+L<Froody::Implementation::OneClass> and L<Froody::Implementation::Remote>
 
 =head1 AUTHORS
 

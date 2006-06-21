@@ -8,11 +8,10 @@ At the core of Froody is the concept of Froody Methods, methods that you
 can call remotely over the web.
 
 For example, we have a hypothetical method called "examples.myapi.greet" that
-can return us greetings.  We need to pass it one parameter, called "who" that
-is the name of the person we're greeting.
-
-These two things are passed as CGI parameters to a froody endpoint (a cgi
-script, a mod_perl server, whatever) sitting at "http://myserver.com/fe"
+can return us greetings.  We need to pass it one parameter, called "who", that
+is the name of the person we're greeting. These two things are passed as CGI
+parameters to a froody endpoint (a cgi script, a mod_perl server, whatever)
+sitting at "http://myserver.com/fe"
 
   bash$ lwp-request 'http://myserver.com/fe?method=examples.myapi.greet&who=Mark'
   <?xml version="1.0" encoding="utf-8"?>
@@ -47,9 +46,9 @@ the method(s):
      <method name="examples.myapi.greet">
        
        <!-- the parameters we pass to the method -->
-       <attributes>
-         <attribute name="who" type="text" optional="0" />
-       </attribute>
+       <arguments>
+         <argument name="who" type="text" optional="0" />
+       </arguments>
        
        <!-- an example response, what the returned XML will look like -->
        <response>
@@ -62,7 +61,7 @@ the method(s):
   XML
   }
 
-Note that I've omited the optional documentation sections that should normally
+Note that I've omitted the optional documentation sections that should normally
 be included (the C<< <errors> >> and C<< <description> >> sections.)
 
 Though this seems like a lot of stuff to have to write upfront, it saves us a
@@ -70,12 +69,12 @@ lot of work in the Perl code we're going to write later since it allows Froody
 to verify parameters for you and convert your return values to XML
 automatically.
 
-Infomation on exactly what should be put in an XML spec can be found
+Information on exactly what should be put in an XML spec can be found
 by reading up on L<Froody::API::XML>.
 
 =head2 Writing The Implementation
 
-Having defined our API we now need to write a class that implements it - i.e.
+Having declared our API we now need to write a class that implements it - i.e.
 write the code that actually does the work of calculating the greeting.
 
 This is done like so:
@@ -213,14 +212,15 @@ which is equivalient to:
   my $response = $rsp->as_terse->content;
 
 
-The terse response makes use of Reflection.  It uses the specification we
-defined at the top of this document which the client downloaded from the server
-to do the conversion back to the right thing.
+The terse response makes use of Reflection. The 'add_endpoint()' method calls
+the server to ask it what methods it provides and what the responses look like.
+It then uses these specifications (like the one we declared at the top of this
+document) to do the conversion back to the expected response.
 
 =head1 A More Complicated Example
 
 Of course, there would be little point returning XML if all we were going to do was
-return a string.  We can return much more complicated data structures:
+return simple strings.  We can return much more complicated data structures:
 
   package Corelist::API;
   use base qw(Froody::API::XML);
@@ -257,13 +257,12 @@ return a string.  We can return much more complicated data structures:
   XML
   }
 
-This is a little more complicated.  We now have elements that are contained
-within elements, attributes, and things that appear multiple times.  I'll
-explain why we had to do that later.
+We now have elements that are contained within elements, attributes, and things
+that appear multiple times.  I'll explain why we had to do that later.
 
-First note that we've defined the argument type as C<csv>.  This means that
-it expects the data passed to it via the CGI parameters to be comma seperated.
-So if we call this method like so
+First note that we've defined the argument type as C<csv>.  This means that it
+expects the data passed to it via the CGI parameter to be a comma seperated
+list. So if we call this method like so
 
   http://server.com/fe?method=examples.perl.core&modules=Foo::Bar,Foo::Baz
 
@@ -284,7 +283,7 @@ We'll still get a one item array:
      modules => [ "Foo::Bar" ]
    }
 
-The data structure we want to return not nearly as complicated as the
+The data structure we want to return is not nearly as complicated as the
 XML we've defined above.
 
   { 
@@ -316,17 +315,17 @@ XML we've defined above.
 Note how we haven't specified which hash keys above are attributes and which
 contain data to be put in elements - in fact you can't tell what's going to
 turn into an attribute and what's going to turn into a child element by looking
-at the data structure alone.  Froody works out what the right thing is to do by
+at the data structure alone.  Froody works out what the right thing to do is by
 comparing the hash keys with the attributes and element names defined in the
 example response.
 
-Froody also works out if something can occur multiple times by examining
-the example response. If you want to return a list of similar items, you
-have to specify it multiple (at least 2) times.
+Froody also works out if something can occur multiple times by examining the
+example response. If you want to return a list of similar items, for example,
+you have to specify it multiple (at least 2) times.
 
 Here's the implementation that can actually create these data structures for us
-(you can find this example in the C<examples> directory in the Froody
-distribution).
+(you can find a fully working demo of this example in the C<examples> directory
+in the Froody distribution).
 
   package Corelist::Implementation;
   use base qw(Froody::Implementation);

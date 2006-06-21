@@ -29,11 +29,23 @@ or something.
 A hash of named parameters to pass to the request handler, taken from the
 CGI params on the request or something.
 
+=item type
+
+The type of response wanted.  By default this returns xml.
+
 =back
 
 =cut
 
-__PACKAGE__->mk_accessors(qw( method params ));
+__PACKAGE__->mk_accessors(qw( method params));
+
+sub type {
+   my $self = shift;
+   return $self->{type} || "xml"
+     unless @_;
+   $self->{type} = shift;
+   return $self;
+}
 
 =head1 BUGS
 
@@ -58,5 +70,3 @@ L<Froody>, L<Froody::Dispatch>
 
 =cut
 1;
-
-

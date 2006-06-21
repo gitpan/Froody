@@ -5,6 +5,8 @@ use strict;
 use warnings;
 use Params::Validate qw( :all );
 
+our $IMPLEMENTATION_SUPERCLASS = 1;
+
 sub implements { "Froody::API::Reflection" => 'froody.reflection.*' }
 
 use Froody::Logger;
@@ -29,22 +31,25 @@ Returns information for a given froody API method.
 
 sub getMethodInfo
 {
-  my $self = shift;
-  my $args = shift;
-  my $calling_method = shift;
+  my ($self, $args, $metadata) = @_;
+  
+  my $method_name = $args->{method_name};
+  my $method = $metadata->{dispatcher}->get_method($method_name);
 
-  my $repository = $self->repository;
+  return $self->_methodInfo($metadata, $method);
+}
 
-  my $method = $repository->get_method($args->{method_name});
+sub _methodInfo {
+  my ($self, $metadata, $method) = @_;
+  my $calling_method = $metadata->{dispatcher}->get_method('froody.reflection.getMethodInfo');
 
   my $response = {
     name => $method->full_name,
   };
 
-  for (qw(needslogin description)) {
-    my $val = $method->$_;
-    $response->{$_} = $val if $val;
-  }
+  $response->{description} = $method->description
+    if $method->description;
+  $response->{needslogin} = $method->needslogin || 0;
 
   my $arg_info;
   {
@@ -55,7 +60,7 @@ sub getMethodInfo
         name => $k,
         -text => $v->{doc},
         optional => $v->{optional},
-        type => $v->{usertype}
+        type => join(',',@{$v->{type}}),
       };
       push @$arg_info, $argdata;
     }
@@ -65,7 +70,7 @@ sub getMethodInfo
   my $method_errors = $method->errors;
   my $errors = [ map { 
     +{ 
-        code => $_, 
+        code => $_,
         message => $method_errors->{$_}{message}, 
         -text => $method_errors->{$_}{description} 
     } } keys %$method_errors ];
@@ -82,14 +87,13 @@ sub getMethodInfo
   # child nodes.  This *must* be encoded in what we are (which is utf-8)
   if ($method->example_response) {
     my ($example_element) = $rsp->xml->findnodes("//response");
-    $example_element->addChild( _response_to_xml($method) );
+    $example_element->appendText( _response_to_xml($method)->toString );
   }
-
-  return $rsp; 
+  return $rsp->as_terse; 
 }
 
 use Froody::Response::XML;
-use Froody::Response::PerlDS;
+use Froody::Response::Terse;
 
 sub _response_to_xml {
   my $structure = shift;
@@ -99,7 +103,7 @@ sub _response_to_xml {
 
   # Nasty hack incase things aren't in the right encoding
   unless ($example->xml->encoding eq "utf-8")
-   { $example = $example->as_perlds->as_xml };
+   { $example = $example->as_terse->as_xml };
  
   # grab the thingy inside the rsp and return it
   my ($response) = $example->xml->findnodes("/rsp/*");
@@ -115,13 +119,26 @@ Returns a list of methods.
 
 sub getMethods
 {
-  my $self = shift;
-  my $args = shift;
+  my ($self, $args, $metadata) = @_;
 
-  my $repository =  $self->repository;
+  my $client = $metadata->{dispatcher};
+  my $repo = $metadata->{dispatcher}->repository;
+  my %methods = map { $_ => 1 } map { $_->full_name } $repo->get_methods;
+  my $eps = $client->endpoints();
+  my @invokers = map { $_->{invoker} }
+                 grep { $_->{lazy} }
+                 values %$eps;
+  if (@invokers) {
+    # Ugh.  Scarily recursive.
+    my $getMethods = $repo->get_method('froody.reflection.getMethods');
+    for (@invokers) {
+      my $methods = $_->invoke( $getMethods, $args )->as_terse->content->{method};
+      $methods{$_}++ for @$methods;
+    }
+  }
 
   return {
-    method => [ sort map { $_->full_name } $repository->get_methods ],
+    method => [ sort map { $_ } keys %methods],
   };
 }
 
@@ -133,15 +150,13 @@ Returns a list of error types.
 
 sub getErrorTypes
 {
-  my $self = shift;
-
-  my $repository = $self->repository;
+  my ($self, $args, $metadata) = @_;
 
   return {
     errortype => [ sort 
                    map { $_->full_name } 
                    grep { $_->full_name } 
-                   $repository->get_errortypes ],
+                   $metadata->{dispatcher}->repository->get_errortypes ],
   };
 }
 
@@ -153,14 +168,50 @@ Returns the error type information
 
 sub getErrorTypeInfo
 {
-  my $self = shift;
-  my $args = shift;
-  my $calling_method = shift;
+  my ($self, $args, $metadata) = @_;
 
-  my $repository = $self->repository;
-  my $et = $repository->get_errortype($args->{code});
-
+  my $repo = $metadata->{dispatcher}->repository;
+  my $et = $repo->get_errortype($args->{code});
   return $et->example_response; 
+}
+
+=item getSpecification($args, $metadata)
+
+Returns a terse representation of all public registered methods and error types
+within the repository indicated in $metadata
+
+=cut
+
+sub getSpecification {
+  my ($self, $args, $metadata) = @_;
+
+  my $repo = $metadata->{dispatcher}->repository;
+  my $methods = [ map { $self->_methodInfo($metadata, $_->[0])->as_terse->content }
+                  sort { $a->[1] cmp $b->[1] } 
+                  map { [$_, $_->full_name ] } 
+                  $repo->get_methods ];
+  my $errortypes = [ 
+                   map { _errortype_hash($_->[0]->example_response) }
+                   sort { $a->[1] cmp $b->[1] }
+                   grep { $_->[1] } # Skip the default structure
+                   map { [ $_, $_->full_name ] } 
+                   $repo->get_errortypes 
+                   ];
+  my $ret = {
+    methods => { method => $methods },
+    errortypes => { errortype => $errortypes },
+  };
+  return $ret;
+}
+
+sub _errortype_hash {
+  my $example = shift;
+  my $xml = $example->as_xml->xml; 
+  my $ret = {
+    code => $xml->findvalue('/rsp/errortype/@code'),
+    -text => join('', map { $_->toString } ($xml->findnodes('/rsp/errortype/*')))
+  };
+  return $ret;
 }
 
 =back

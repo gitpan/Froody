@@ -28,26 +28,27 @@ sub request_class { "Froody::Request::Apache" }
 sub send_header {
   my $class = shift;
   my $response = shift;
-  my $content_type = shift;;
+  my $content_type = shift;
 
   my $r = Apache->request();
 
   if (my $cookies = $response->cookie) {
+    warn "Baking cookies";
     for my $c ( ref($cookies) ? @$cookies : ($cookies) ) {
       my $cookie = Apache::Cookie->new( $r, %{ $c } );
       $cookie->bake;
     }
   }
-  $r->send_http_header($content_type);
+  $r->header_out("Cache-Control" => "no-cache");
+  $r->send_http_header($content_type || 'application/xml');
 }
 
-sub send_response {
+sub send_body {
   my $class = shift;
-  my $response = shift;
+  my $bytes = shift;
 
   my $r = Apache->request();
-  
-  $r->print($response->present);
+  $r->print($bytes)
 }
 
 =back

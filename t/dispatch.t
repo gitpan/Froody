@@ -30,8 +30,7 @@ my @methods = (
   { method => 'foo.test.getGroups',  value => "\x{2264}" },
 );
 
-my $dispatcher = Froody::Dispatch->new()
-                                 ->error_style("passthrough");
+my $dispatcher = Froody::Dispatch->new();
 my ($response, $xml);
 
 # Check that we get back the class and method names we expect
@@ -59,14 +58,15 @@ throws_ok {
 
 
 ok( $response = $dispatcher->dispatch(
-  method => "foo.test.thunktest",
+  method => "foo.test.thunktest   ",
   params => { foo => 1 }
 ),"dispatched" );
-is( $response->as_perlds->content->{value}, 2, "got '2' back, class_thunker run");
+is( $response->as_terse->content, 2, "got '2' back, class_thunker run");
 
 
-ok( $response = $dispatcher->call( "foo.test.thunktest", foo => 1 ),"dispatched" );
-is( $response->{-text}, 2, "got '2' back, class_thunker run");
+# leading space should be stripped.
+ok( $response = $dispatcher->call( "foo.test.thunktest", foo => ' 1' ),"dispatched" );
+is( $response, 2, "got '2' back, class_thunker run");
 
 throws_ok {
   $dispatcher->call('foo.test.haltandcatchfire');

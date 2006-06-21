@@ -22,9 +22,6 @@ Froody::Invoker - provide a way to run a Froody::Method
                              ->full_name("fred.bar.baz")
                              ->invoker($inv);
 
-  # call the method with the invoker we just assigned to it
-  $method->call(\%params);
-
 =head1 DESCRIPTION
 
 If you just want to write a simple Froody server, you don't need to worry about
@@ -55,14 +52,6 @@ Allows you to write local implementations with simple Perl methods.
 =item Froody::Invoker::Remote
 
 Dispatches calls to a remote Froody server
-
-=item Froody::Invoker::Reflection
-
-Always returns the example response.  Useful for prototyping.
-
-=item Froody::Invoker::Null
-
-Always returns the empty sucessful response.
 
 =back
 
@@ -101,12 +90,29 @@ request:
   
   1;
 
+=head2 SUPPORT METHODS
+
+=over
+
 =cut
 
 sub invoke {
  Froody::Error->throw("perl.methodcall.unimplemented",
     "This is an abstract base class.  Please implement invoke");
 }
+
+=item source
+
+Provides a human readable description
+of where the invocation is going to actually occur.
+
+=cut
+
+sub source {
+  __PACKAGE__;
+}
+
+=back
 
 =head1 BUGS
 
@@ -127,9 +133,15 @@ the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Froody::Method>, L<Froody::Invoker::Implementation>
-L<Froody::Invoker::Remote>, L<Froody::Invoker::Example>,
-L<Froody::Invoker::Null>
+=over
+
+=item L<Froody::Method> 
+
+=item L<Froody::Implementation>
+
+=item L<Froody::Invoker::Remote>
+
+=back
 
 =cut
 

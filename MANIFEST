@@ -17,9 +17,8 @@ lib/Froody/Request/CGI.pm
 lib/Froody/Request.pm
 lib/Froody/Response.pm
 lib/Froody/Server.pm
-lib/Froody/Walker/TerseToXML.pm
-lib/Froody/Walker/XMLToTerse.pm
-lib/Froody/Walker/TerseToPerlDS.pm
+lib/Froody/Walker/Terse.pm
+lib/Froody/Walker/XML.pm
 lib/Froody/Logger.pm
 lib/Froody/Upload.pm
 lib/Froody/Implementation.pm
@@ -44,8 +43,6 @@ lib/Froody/Server/CGI.pm
 lib/Froody/QuickStart.pod
 lib/Froody/Structure.pm
 lib/Froody/Invoker/Implementation.pm
-lib/Froody/Invoker/Null.pm
-lib/Froody/Invoker/Reflection.pm
 lib/Froody/Invoker/Remote.pm
 lib/Froody.pm
 t/dispatch.t
@@ -65,16 +62,13 @@ t/000compile.t
 t/003pod.t
 t/rsp_perlds.t
 t/method_basic.t
-t/complex_invoke.t
 t/high-level.t
 t/err_isa.t
 t/rsp_xml.t
 t/repos.t
-t/meta_err.t
 t/inv_rem.t
 t/structure.t
 t/xml.t
-t/t.t
 t/rsp_convert.t
 t/rsp_basic.t
 t/rsp_terse.t

@@ -81,7 +81,8 @@ package Time::Implementation;
 use Sys::Hostname;
 
 use base qw{
-  Froody::Implementation
+  Froody::Plugin
+  Froody::Implementation;
 };
 
 =head1 THE IMPLEMENTATION
@@ -128,6 +129,10 @@ sub uptime {
 package main;
 
 use Froody::Server::Standalone;
+
+use Froody::Plugin;
+
+use Froody::Implementation;
 
 # Mess with the include path because we have everything in the same file.
 

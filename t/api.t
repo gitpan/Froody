@@ -14,11 +14,13 @@ use Data::Dumper;
 use Term::ANSIColor qw(:constants);
 $Term::ANSIColor::AUTORESET = 1;
 
-use Test::More tests => 31;
+use Test::More tests => 49;
 use Test::Exception;
+use Test::Differences;
 
 # this is where we keep our modules
 use Froody::Repository;
+use Test::Logger;
 
 use Scalar::Util qw(blessed);
 
@@ -30,28 +32,16 @@ use_ok ('Testproject::API');
 
   # Check we got our methods back
   my @methods = grep { blessed($_) && $_->isa("Froody::Method") } @stuff;
-  is(@methods, 8, "got eight methods back from the api");
   my $methods = { map { $_->full_name => 1 } @methods };
-  is_deeply($methods, { map { $_ => 1 } qw(
-      testproject.object.method
-      testproject.object.text
-      testproject.object.sum
-      testproject.object.texttest
-      testproject.object.extra
-      testproject.object.range
-      testproject.object.range2
-      testproject.object.params
-  )},"got the right method names")
-    or diag(Dumper $methods);
     
   # Check we got our error types back
   my @et = grep { blessed($_) && $_->isa("Froody::ErrorType") } @stuff;
-  is(@et, 2, "got two et back from the api");
+  is(@et, 2, "got two error types back from the api");
   my $et = { map { $_->name => 1 } @et };
   is_deeply($et, { map { $_ => 1 } qw(
      foo.fish
      foo.fish.fred
-  )},"got the right et names")
+  )},"got the right error type names")
 
 }
 
@@ -66,6 +56,7 @@ Testproject::Object->register_in_repository($repos);
 # makes sense from the way the API is now used (since nothing but the
 # method object should really be calling invoke,) but makes testing a bit more
 # painful.
+my $email    = $repos->get_method('testproject.object.email');
 my $text     = $repos->get_method('testproject.object.text');
 my $sum      = $repos->get_method('testproject.object.sum');
 my $texttest = $repos->get_method('testproject.object.texttest');
@@ -73,46 +64,95 @@ my $extra    = $repos->get_method('testproject.object.extra');
 my $range    = $repos->get_method('testproject.object.range');
 my $range2   = $repos->get_method('testproject.object.range2');
 my $params   = $repos->get_method('testproject.object.params');
-foreach ($text, $sum, $texttest, $extra, $range, $range2, $params)
+my $get      = $repos->get_method('testproject.object.get');
+foreach ($email, $text, $sum, $texttest, $extra, $range, $range2, $params)
  { isa_ok($_, 'Froody::Method') }
+
+my $metadata = { repository => $repos, dispatcher => Froody::Dispatch->new };
+
+{
+  my $resp = $email->call({ email_trim => 'test@fotango.com'}, $metadata);
+  is( $resp->status, 'ok' );
+}
+
+{
+  my $resp = $email->call({ email_trim => '  test@fotango.com  '}, $metadata);
+  is( $resp->status, 'ok' );
+}
+
+{
+  my $resp = $email->call({ email_trim => '  test @fotango.com  '}, $metadata);
+  is( $resp->status, 'fail' );
+  like $resp->message, qr{Error validating incoming parameters}, "bad arg";
+  is($resp->data->{error}[0]{-text}, 'Email not valid');
+  is($resp->data->{error}[0]{name}, 'email_trim');
+}
+
+{
+  my $resp = $email->call({ email => '  test@fotango.com  '}, $metadata);
+  is( $resp->status, 'fail' );
+  like $resp->message, qr{Error validating incoming parameters}, "bad arg";
+  is($resp->data->{error}[0]{-text}, 'Email not valid');
+  is($resp->data->{error}[0]{name}, 'email');
+}
 
 dies_ok {
     Froody::API->load
 } 'need to override ::load';
 
 lives_ok {
-    $text->call({});
+    $text->call({}, $metadata);
 } "we can invoke thingy.text without errors";
 
-use Froody::Response::PerlDS;
+lives_ok {
+    my $ret = $get->call({});
+    is($ret->content, 'myget reached');
+} "we can invoke get without errors";
 
 {
-  my $result = $sum->call({ values => '10,20,30'})->as_perlds->content;
-  is_deeply ( $result, {name => 'sum', value => 60}, 'multi argument handling')
+  my $result = $sum->call({ values => '10,20,30'}, $metadata)->as_terse->content;
+  is_deeply ( $result, 60, 'multi argument handling')
+    or diag(Dumper $result);
+
+  $result = $sum->call({ values => [10,20,30] }, $metadata)->as_terse->content;
+  is_deeply ( $result, 60, 'multi argument handling')
     or diag(Dumper $result);
 }
 
-throws_ok { $sum->call({ values => undef }) } qr{Bad argument type}, "bad arg";
-throws_ok { $sum->call({ })                 } qr{Missing argument}, "missing";
+{
+  my $resp = $sum->call({ values => '10,20f,30'}, $metadata);
+  like $resp->message, qr{Error validating incoming parameters}, "bad arg";
+  is($resp->data->{error}[0]{-text}, 'not a number');
+}
 
-is_deeply($range->call({ base => 90, offset => 10 })->as_perlds->content,
-    {name => 'range',
-      children => [{name => 'value', value => 80},
-       {name => 'value', value => 100}]
-     },"range");
 
-is_deeply($range2->call({ base => 90, offset => 10 })->as_perlds->content,
-    {name => 'range',
-      children => [{name => 'value', attributes => {num => 80}},
-       {name => 'value', attributes => {num => 100}}]
-     },"range2");
 
-# XXX: test the logger warnings!
-is_deeply($extra->call({})->as_perlds->content,
-    { name => 'range' }, "wibble");
+isa_ok( my $resp = $sum->call({ values => undef }, $metadata), "Froody::Response", "called with bad argument");
+like( $resp->message, qr{Error validating incoming parameters}, "bad arg");
 
-is_deeply($params->call( { bob => 'baz', fred => "wobble" } )
-  ->as_perlds->content, { name => "count", value => 2 }, "remaining params passed ok");
+isa_ok( $resp = $sum->call({}, $metadata), "Froody::Response", "called with missing argument");
+like( $resp->message, qr{Error validating incoming parameters}, "missing");
+
+is_deeply($resp = $range->call({ base => 90, offset => 10 }, $metadata)->as_terse->content,
+    { value => [ 80, 100] },"range") or diag Dumper($resp);
+
+is_deeply($resp = $range2->call({ base => 90, offset => 10 }, $metadata)->as_terse->content,
+    { value => [ { num => 80}, { num => 100 } ] }, "range2") or diag Dumper($resp); 
+
+{
+  my $log = Test::Logger->expect(["froody.walker.terse",
+				  warn => qr/unknown key 'blah' defined/]);
+
+  is_deeply($resp = $extra->call({}, $metadata)->as_terse->content, { value => []}, "wibble")
+    or diag Dumper($resp);
+}
+
+is_deeply($params->call( { bob => 'baz', fred => "wobble" }, $metadata )
+  ->as_terse->content, 2, "remaining params passed ok");
+
+is_deeply($params->call( { this_one => 1 }, $metadata)
+  ->as_terse->content, 0, "can pass no params and it still works.");
+
 
 #### test the errortypes #####
 
@@ -163,13 +203,12 @@ is_deeply($fred->structure, {
                    }
 }, "fred struct");
 
-is_deeply($default->structure, {
-            'err' => {
-                     'elts' => [
-                               ],
-                     'attr' => [
-                                 'code',
-                                 'msg'
-                               ]
-                   }
+eq_or_diff($default->structure, {
+  'err' => {
+           'elts' => [ ],
+           'attr' => [
+                       'code',
+                       'msg'
+                     ]
+         }
 }, "default struct");

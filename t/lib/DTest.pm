@@ -12,7 +12,9 @@ sub xml {
 <spec><methods>
 <method name="foo.test.add" needslogin="0">
   <description>Add</description>
-  <arguments/>
+  <arguments>
+    <argument name="values" type="csv" optional="1" />
+  </arguments>
   <response>
     <value>1</value>
   </response>
@@ -43,6 +45,12 @@ sub xml {
 </method>
 
 <method name="foo.test.haltandcatchfire" needslogin="0">
+  <errors>
+    <error code="test.error"/>
+  </errors>
+</method>
+
+<method name="foo.test.badhandler" needslogin="0">
   <errors>
     <error code="test.error"/>
   </errors>
