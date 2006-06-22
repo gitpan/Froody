@@ -1,3 +1,6 @@
+42.007
+  * fixed MANIFEST.
+
 42.006
   * validate terse data structures properly whether they are 
     actually passed over http as XML or simply returned directly

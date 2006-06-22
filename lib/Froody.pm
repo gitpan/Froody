@@ -6,7 +6,7 @@ use warnings;
 # okay, you got me.  This doesn't really do anything but hold the universal
 # VERSION for Froody so you can say "use Froody 42.1" and it'll go bang if it's
 # not installed.  Which it will, 'cos we ain't written it yet
-our $VERSION = "42.006";
+our $VERSION = "42.007";
 
 =head1 NAME
 
