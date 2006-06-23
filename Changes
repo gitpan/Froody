@@ -1,3 +1,7 @@
+42.008
+  * added simple (fast) JSON-based client
+  * made passing TODO tests not be TODO tests anymore
+
 42.007
   * fixed MANIFEST.
 

@@ -47,6 +47,7 @@ sub client {
     }
     eval q[ use Froody::Server::Standalone; ]; die $@ if $@;
     
+    
     my $server = Froody::Server::Standalone->new();
     $server->port($port);
     $server->run;
@@ -59,8 +60,8 @@ sub client {
   return $client;
 }
 
-
-END {
+# stop is documented
+sub stop {
   if ($child) {
     # what the gosh-darn signals numbered on this box then?
     use Config;
@@ -79,6 +80,9 @@ END {
     }
   }
 }
+
+END { stop() }
+
 
 =back
 
@@ -102,3 +106,4 @@ the same terms as Perl itself.
 =cut
 
 1;
+

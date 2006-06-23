@@ -44,7 +44,6 @@ use strict;
 
 use Params::Validate qw(:all);
 use Scalar::Util qw( blessed );
-use UNIVERSAL::require;
 
 use Froody::Response::Terse;
 use Froody::Repository;
@@ -147,6 +146,7 @@ sub parse_cli {
     urls => \@urls,
     filters => \@filters,
     includes => \@includes,
+    args => {},
   }
 }
 
@@ -189,14 +189,22 @@ Adds an implementation's methods to this dispatcher.
 
 sub add_implementation {
   my ($self, $module, @filters) = @_;
-  $module->require;
-  $module->import;
-  my $invoker = $module->new if $module->can('new');
-  if (!$invoker->isa('Froody::Implementation')) {
-    $invoker = (bless {}, "Froody::Invoker");
+  return if $self->endpoints->{$module}{loaded};
+  
+  eval " use $module; 1" or die $@;
+  my ($api, $invoker);
+  $invoker = $self->endpoints->{$module}{invoker};
+  if ($module->isa('Froody::API')) {
+    $api = $module;
+    $invoker ||= (bless {}, "Froody::Invoker");  
+  } elsif ($module->isa("Froody::Implementation")) {
+    my @imp_filters;
+    ($api, @imp_filters) = $module->implements;
+    $invoker ||= $module->new;
+    push @filters, @imp_filters;
   }
   $self->endpoints->{$module} = { invoker => $invoker, loaded => 1 };
-  $self->repository->register_api( $module, $invoker, @filters );
+  $self->repository->register_api( $api, $invoker, @filters );
 }
 
 =item cli_config
@@ -340,7 +348,7 @@ sub load_specification {
   my $invoker = $endpoint->{invoker};
   
   my $repo = $self->repository;
-  my $response = $self->call_via($invoker, 'froody.reflection.getSpecification');
+  my $response = $self->call_via($invoker, 'froody.reflection.getSpecification' );
   if ($response->as_xml->status eq 'ok') {
     my @structures =  Froody::API::XML->load_spec($response->as_xml->xml);
     $repo->load($invoker, \@structures, @method_filters);
@@ -366,7 +374,7 @@ sub reload {
 
 sub _endpoint_age {
   my ($self, $name) = @_;
-  $self->endpoints->{$_}{loaded} - time
+  $self->endpoints->{$name}{loaded} - time
 }
 
 =back

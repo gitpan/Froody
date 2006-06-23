@@ -53,6 +53,7 @@ lib/Froody/Server/Apache.pm
 lib/Froody/Server/CGI.pm
 lib/Froody/Server/Standalone.pm
 lib/Froody/Server/Test.pm
+lib/Froody/SimpleClient.pm
 lib/Froody/Structure.pm
 lib/Froody/Upload.pm
 lib/Froody/Walker.pm

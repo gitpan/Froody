@@ -46,6 +46,8 @@ my @docs = map { PPI::Document->new( $_ ) || () } (@modules, @scripts);
 
 my (%modules, %packages);
 for my $doc (@docs) {
+
+  # Record all packages we use.
   my $includes = $doc->find( 
     sub { $_[1]->isa('PPI::Statement::Include') and $_[1]->module }
   ) || [];
@@ -54,6 +56,7 @@ for my $doc (@docs) {
     $modules{ $_->module }++;
   }
   
+  # Record all packages we provide.
   my $packages = $doc->find( sub { $_[1]->isa('PPI::Statement::Package') } ); 
   $packages{ $_->namespace }++ for @{ $packages || [] };
 }
@@ -116,5 +119,6 @@ sub is_required {
     pass "$module is recommended";
     $ret++;
   }
+
   return $ret;
 }

@@ -10,7 +10,6 @@ use base qw(
 );
 
 use Scalar::Util qw(blessed);
-use UNIVERSAL::require;
 use Froody::Error;
 use Froody::Logger;
 my $logger = Froody::Logger->get_logger("Froody::Implementation");

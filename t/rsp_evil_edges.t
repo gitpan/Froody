@@ -16,7 +16,7 @@ use Froody::Response::Error;
 use Froody::Response::String;
 use Froody::Response::XML;
 
-$TODO = "Make this pretty, not evil, like it is now.";
+{ local $TODO = "Make this pretty, not evil, like it is now.";
 throws_ok {
   Froody::Response::String ->new()
                            ->set_string("Mr Katz.  He dead.")
@@ -29,4 +29,5 @@ throws_ok {
                            ->set_string("<rsp></rsp>")
                            ->as_error;
 } qr/froody.xml.parse/;
+}
 isa_ok $@, "Froody::Error";

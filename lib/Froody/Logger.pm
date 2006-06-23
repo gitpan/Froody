@@ -20,7 +20,7 @@ Froody::Logger - logging wrapper
 Fotango internally use a Log4perl subclass, Logger.  We don't want to
 impose this on the world when we release our external modules.  So we have
 this module that uses Logger if it can, otherwise, it warns on warnings,
-dies on error or fatal, and ignores everything esle.
+dies on error or fatal, and ignores everything else.
 
 =head2 METHODS
 
