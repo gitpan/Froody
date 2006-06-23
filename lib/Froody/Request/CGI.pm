@@ -50,6 +50,9 @@ sub new {
       # split multi-values params into a listref
       my @vals = split("\0",$vars{$_});
       $vars{$_} = \@vals if (@vals > 1);
+      
+      # decopde params from unicode
+      $vars{$_} = Encode::decode_utf8( $vars{$_}, 1 );
     }
   }
 

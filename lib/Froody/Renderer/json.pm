@@ -2,10 +2,11 @@ package Froody::Renderer::json;
 use strict;
 use warnings;
 
-use JSON;
+use JSON::Syck;
 
 use Froody::Response;
 use Froody::Response::Terse;
+use Encode;
 
 # If we don't know how to do it ourselves, convert to
 # a terse and try again
@@ -18,7 +19,10 @@ use Froody::Response::Terse;
 # and renders it with JSON
 *Froody::Response::Terse::render_json = sub {
   my $self = shift;
-  return objToJson({ stat => $self->status, data => $self->content });
+  local $JSON::Syck::ImplicitUnicode = 1; # bah.
+  return Encode::encode_utf8( # BAH
+    JSON::Syck::Dump({ stat => $self->status, data => $self->content })
+  );
 };
 
 use Froody::Server;

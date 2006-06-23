@@ -34,7 +34,6 @@ WriteMakefile
                            'Params::Validate' => 0,
                            'LWP::UserAgent' => 0,
                            'XML::LibXML' => 0,
-                           'JSON' => 0,
                            'UNIVERSAL::require' => 0
                          }
         )

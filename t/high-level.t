@@ -5,7 +5,7 @@
 # then make sure that those files exist and are what we expect.
 ############################################################################
 
-use Test::More tests => 27;
+use Test::More tests => 29;
 
 use warnings;
 use strict;
@@ -18,7 +18,7 @@ use Froody::Server::Test;
 use Froody::SimpleClient;
 
 ok( my $real_client = Froody::Server::Test->client( "DTest::Test" ), 'got interface to client');
-is $real_client->repository->get_methods, 11, "Right number of methods.";
+is $real_client->repository->get_methods, 12, "Right number of methods.";
 
 ok( my $simple_client = Froody::SimpleClient->new( keys %{ $real_client->endpoints } ), "got simpleclient" );
 
@@ -30,6 +30,11 @@ for my $client ( $real_client, $simple_client ) {
     $answer = $client->call( 'foo.test.add', values => [1,2,3]);
   } 'can make call';
   ok( $answer, 'got a response');
+  
+  lives_and {
+    $answer = $client->call( 'foo.test.echo', { echo => "\x{e9}" } );
+    is $answer, "\x{e9}", "We get the right answer back.";
+  } 'can make call';
   
   lives_and {
     $answer = $client->call( 'foo.test.add', {} );

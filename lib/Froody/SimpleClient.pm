@@ -17,6 +17,7 @@ __PACKAGE__->mk_accessors(qw( endpoint ));
 use LWP::UserAgent;
 use JSON::Syck;
 use HTTP::Request::Common;
+use Encode qw( encode_utf8 decode_utf8 );
 
 =head1 ATTRIBUTES
 
@@ -50,6 +51,37 @@ sub call {
   my $self = shift;
   my $method = shift;
   my %args = ref $_[0] eq 'HASH' ? %{ $_[0] } : @_;
+
+  # we want json
+  $args{_froody_type} = "json";
+
+  #my $response = decode_utf8( $self->call_raw($method, %args) );
+  my $response = $self->call_raw($method, %args);
+  
+  # parse as Frooy/JSON response
+  my $data = eval {
+    local $JSON::Syck::ImplicitUnicode = 1; # bah.
+    JSON::Syck::Load( $response );
+  };
+  unless (ref $data eq "HASH") {
+    die "Error parsing ".$response.": $@";
+  }
+  unless ($data->{stat} eq 'ok') {
+    Froody::Error->throw($data->{data}{code}, $data->{data}{msg}, $data->{data}{error});
+  }
+  return $data->{data};
+}
+
+=item call_raw( method, args )
+
+makes a raw call, returns the exact thing returned by the server.
+
+=cut
+
+sub call_raw {
+  my $self = shift;
+  my $method = shift;
+  my %args = ref $_[0] eq 'HASH' ? %{ $_[0] } : @_;
   
   die "no endpoint set" unless $self->endpoint;
   die "no UA" unless $self->{ua};
@@ -69,6 +101,8 @@ sub call {
 
     } elsif (ref($args{$_})) {
       die "can't handle type of argument '$_' (is a ".ref($args{$_}).")";
+    } else {
+      $args{$_} = encode_utf8( $args{$_} );
     }
     delete $args{$_} unless defined $args{$_};
   }
@@ -76,23 +110,14 @@ sub call {
   # make the request
   my $request = POST( $self->endpoint,
     Content_Type => 'form-data',
-    Content => [ method => $method, _froody_type => "json", %args ] );
+    Content => [ method => $method, %args ] );
   my $response = $self->{ua}->request( $request );
 
   Froody::Error->throw('froody.invoke.remote', 'Bad response from server: '. $response->status_line)
     unless $response->is_success;
 
-  # parse as Frooy/JSON response
-  my $data = eval { JSON::Syck::Load( $response->content ) };
-  unless (ref $data eq "HASH") {
-    die "Error parsing ".$response->content.": $@";
-  }
-  unless ($data->{stat} eq 'ok') {
-    Froody::Error->throw($data->{data}{code}, $data->{data}{msg}, $data->{data}{error});
-  }
-  return $data->{data};
+  return $response->content;
 }
-
 
 =back
 

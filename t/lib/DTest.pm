@@ -30,6 +30,17 @@ sub xml {
   <errors/>
 </method>
 
+<method name="foo.test.echo" needslogin="0">
+  <description>getGroups</description>
+  <arguments>
+    <argument name="echo" />
+  </arguments>
+  <response>
+    <value>1</value>
+  </response>
+  <errors/>
+</method>
+
 <method name="foo.test.thunktest" needslogin="0">
   <description>thunktest</description>
   <arguments> 

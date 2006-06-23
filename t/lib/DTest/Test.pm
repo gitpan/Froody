@@ -10,6 +10,8 @@ sub implements { DTest => "foo.test.*" }
 
 sub add { return { '-text' => "\x{e9}" } }
 
+sub echo { return { '-text' => $_[1]->{echo} } }
+
 sub getGroups { return { '-text' => "\x{2264}" } }
 
 sub thunktest { 

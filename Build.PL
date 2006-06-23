@@ -24,7 +24,6 @@ Module::Build::Kwalitee->new(
     'HTTP::Request::Common' => 0,
     'Template' => 0,
     'List::MoreUtils' => 0,
-    'JSON' => 0,
     'YAML::Syck' => 0,
     'Module::Pluggable' => 0,
   },

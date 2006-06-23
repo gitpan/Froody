@@ -1,3 +1,9 @@
+42.009
+  * fix UTF8 handling for the standalone server and simpleclient
+  * remove dependency on JSON
+  * (froodydoc binary is currently broken, but the UTF8 fix is important
+    enough to release anyway)
+
 42.008
   * added simple (fast) JSON-based client
   * made passing TODO tests not be TODO tests anymore
