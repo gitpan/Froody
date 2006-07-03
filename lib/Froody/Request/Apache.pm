@@ -59,11 +59,12 @@ sub get_params {
 
   foreach my $upload ( $ar->upload ) {
     my $name = $upload->name;
-    $vars{$name} = Froody::Upload
+    $vars{$name} = -f $upload->tempname ? Froody::Upload
       ->new->fh($upload->fh)
            ->filename($upload->tempname)
            ->client_filename($upload->filename)
-           ->mime_type($upload->info->{'Content-Type'});
+           ->mime_type($upload->info->{'Content-Type'})
+    : undef;
   }
 
   return \%vars;

@@ -578,7 +578,7 @@ sub get_methods {
   my ($self, @filters) = @_;
 
   unless (@_ > 1 ) {
-    @filters = $self->filters;
+    @filters = @{ $self->filters };
   }
   if (!defined $_[0]) {
     @filters = ();

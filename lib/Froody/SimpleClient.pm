@@ -17,7 +17,7 @@ __PACKAGE__->mk_accessors(qw( endpoint ));
 use LWP::UserAgent;
 use JSON::Syck;
 use HTTP::Request::Common;
-use Encode qw( encode_utf8 decode_utf8 );
+use Encode qw( encode_utf8 );
 
 =head1 ATTRIBUTES
 
@@ -55,7 +55,6 @@ sub call {
   # we want json
   $args{_froody_type} = "json";
 
-  #my $response = decode_utf8( $self->call_raw($method, %args) );
   my $response = $self->call_raw($method, %args);
   
   # parse as Frooy/JSON response
@@ -89,6 +88,11 @@ sub call_raw {
   # fudge args so we can do the Right Thing with lists and uploads.
   for (keys %args) {
     my $value = $args{$_};
+    if (!defined $value) {
+      delete $args{$_};
+      next;
+    }
+
     my $ref = ref($value);
     if ($ref eq 'ARRAY' and ref $value->[0] eq 'Froody::Upload') {
       # upload
@@ -102,9 +106,8 @@ sub call_raw {
     } elsif (ref($args{$_})) {
       die "can't handle type of argument '$_' (is a ".ref($args{$_}).")";
     } else {
-      $args{$_} = encode_utf8( $args{$_} );
+      $args{$_} = encode_utf8( $args{$_} ) 
     }
-    delete $args{$_} unless defined $args{$_};
   }
 
   # make the request

@@ -1,3 +1,8 @@
+42.010
+  * delete undef arguments early instead of trying to encode them
+  * handle the case where tempfile is undef during an upload
+  * unbreak get_methods() (fixes froodydoc etc.)
+
 42.009
   * fix UTF8 handling for the standalone server and simpleclient
   * remove dependency on JSON

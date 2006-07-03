@@ -40,7 +40,7 @@ sub run {
   print "\n\n";
   
   print "=head1 DESCRIPTION\n\n";
-  print "Froody API documentation for $filters\n\n";
+  print "Froody API documentation\n\n";
   
   print "=head2 Methods\n\n";
   
