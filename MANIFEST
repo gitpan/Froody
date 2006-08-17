@@ -67,7 +67,6 @@ NINJA
 README
 t/000compile.t
 t/001pragmas.t
-t/002deps.t
 t/003pod.t
 t/004uselib.t
 t/api.t
@@ -78,7 +77,6 @@ t/error.t
 t/high-level.t
 t/implementation.t
 t/inv_rem.t
-t/lazy_loaded_spec.t
 t/lib/DTest.pm
 t/lib/DTest/Test.pm
 t/lib/Other.pm

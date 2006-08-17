@@ -85,12 +85,14 @@ matches the specification passed in
 sub match_to_regex
 {
   my $whatever = shift;
-  my $query = shift;
+  my $query = shift || qr/.*/;
+  return $query if ref $query eq 'Regexp';
   
   if ($query =~ /[^a-zA-Z.*]/)
    { Froody::Error->throw("perl.methodcall.param", "Bad method spec '$query'"); }
   
   $query =~ s{\.}{\.}g;    # dots are dots
+  $query =~ s/\*{2}/\[\\w\\d.\]+/g;  # double stars match anything.
   $query =~ s/\*/[^.]+/g;  # stars are not dots
   return qr/^$query$/;
 }

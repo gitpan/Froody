@@ -74,12 +74,17 @@ sub register_in_repository
 {
   my $class       = shift;
   my $repository  = shift;
+  my @filters     = shift;
+  require Froody::Method;
+  @filters        = map { Froody::Method->match_to_regex($_) } @filters;
 
-  $repository->register_implementation($class);
+  $repository->register_implementation($class, @filters);
 
-  for (@{$class->plugin_methods || [] }) {
-    next if eval { $repository->get_method($_->full_name) };
-    $repository->register_method($_);
+  my @plugin_methods = grep { !eval { $repository->get_method($_->full_name)} }
+                       @{ $class->plugin_methods || [] };
+  for (@plugin_methods) {
+    # UGH
+    $repository->load($_->invoker, [$_], @filters);
   }
 
   return

@@ -22,6 +22,7 @@ use_ok("Froody::ErrorType");
 # a test innit.
 my $method = Froody::Method->new();
 $method->full_name("perl.pm.groups");
+my $texty ={ text => 1, multi => 0, attr => [], elts => [] };
 $method->structure({ 
   'mongers' => {
      attr => ['group'],
@@ -33,6 +34,7 @@ $method->structure({
      text => 1,
      multi => 1,
    },
+  'mongers/monger/nick' => $texty
 });
 
 my $method2 = Froody::Method->new();
@@ -49,6 +51,8 @@ $method2->structure({
      text => 1,
      multi => 1,
    },
+   'mongers/monger/name' => $texty,
+   'mongers/monger/email' => $texty,
 });
 
 #####

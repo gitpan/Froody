@@ -10,6 +10,8 @@ use base 'Froody::API::XML';
 sub xml {
 <<'XML';
 <spec><methods>
+<method name='foo.test.sloooow' needslogin='0' />
+
 <method name="foo.test.add" needslogin="0">
   <description>Add</description>
   <arguments>

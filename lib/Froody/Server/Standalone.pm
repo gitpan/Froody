@@ -49,30 +49,59 @@ sub handle_request
   my $type = $request->type;
   
   # dispatch 
-  our $dispatcher ||= Froody::Dispatch->new();
-  $dispatcher->error_style("response");
-  my $response = $dispatcher->dispatch(
-    method => $request->method,
-    params => $request->params,
-  );
+  $self->dispatcher->error_style("response");
+  my $response = eval {  #Don't allow the server to die on unhandled exceptions.
+    $self->dispatcher->dispatch(
+        method => $request->method,
+        params => $request->params,
+    );
+  }; #
   
-  # send the data back to the browser
-  my $method = "render_$type";
-  $self->_send_bytes(
-    Froody::Server->content_type_for_type($type), 
-    $response->$method
-  );
+  unless ($@) {
+      # send the data back to the browser
+      my $method = "render_$type";
+      return $self->_send_bytes(
+        "200 OK",
+        Froody::Server->content_type_for_type($type), 
+        $response->$method
+      );
+  } else {
+    $self->_send_bytes("500 Server Error", "text/plain", "$@");
+  }
+}
+
+=head2 config
+
+=cut
+
+sub config {
+    my $self = shift;
+    $self->{_dispatcher} = Froody::Dispatch->config(@_);
+}
+
+=head2 dispatcher
+
+=cut
+
+sub dispatcher {
+  my $self = shift;
+  if (@_) {
+    $self->{_dispatcher} = shift;
+    return $self;
+  }
+  return $self->{_dispatcher} ||= Froody::Dispatch->new;
 }
 
 sub _send_bytes
 {
   my $self = shift;
+  my $status = shift;
   my $content_type = shift;
   my $bytes = shift;
   my $time = time2str();
   
   # server headers
-  print "HTTP/1.0 200 OK\r\n";
+  print "HTTP/1.0 $status\r\n";
 
   # standard headers
   print "Content-Type: $content_type\r\n";
@@ -92,6 +121,7 @@ sub _send_bytes
  
   # content
   print $bytes;
+  return;
 }
 
 =head1 BUGS

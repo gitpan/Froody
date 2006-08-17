@@ -15,16 +15,18 @@ our $types;
 sub _types {
   my $self = shift;
 
-  return $types if $types;
+  return $types if defined $types;
   
-  $types = { map { $_->can('type') ? ($_->type => $_)
-                                 : ()
-                 } 
-                 $self->argument_types
-           };
-  return $types;
+  return $types = { map { _register_type_names($_) } $self->argument_types };
 }
 
+sub _register_type_names {
+  my $handler = shift;
+  unless ($handler->can('type')) {
+     return (); 
+  }
+  return map { $_ => $handler } $handler->type;
+}
 
 BEGIN {
   __PACKAGE__->_types(); 

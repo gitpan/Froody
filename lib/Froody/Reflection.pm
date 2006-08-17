@@ -3,6 +3,11 @@ use base qw(Froody::Implementation);
 
 use strict;
 use warnings;
+
+use Froody::Response::XML;
+use Froody::Response::Terse;
+
+
 use Params::Validate qw( :all );
 
 our $IMPLEMENTATION_SUPERCLASS = 1;
@@ -92,19 +97,13 @@ sub _methodInfo {
   return $rsp->as_terse; 
 }
 
-use Froody::Response::XML;
-use Froody::Response::Terse;
-
 sub _response_to_xml {
   my $structure = shift;
 
-  # convert whatever we have to XML
+  # convert whatever we have to XML -- example
+  # responses are always stored in terse form (for now)
   my $example = $structure->example_response->as_xml;
 
-  # Nasty hack incase things aren't in the right encoding
-  unless ($example->xml->encoding eq "utf-8")
-   { $example = $example->as_terse->as_xml };
- 
   # grab the thingy inside the rsp and return it
   my ($response) = $example->xml->findnodes("/rsp/*");
   return $response->cloneNode(1);
@@ -123,20 +122,10 @@ sub getMethods
 
   my $client = $metadata->{dispatcher};
   my $repo = $metadata->{dispatcher}->repository;
-  my %methods = map { $_ => 1 } map { $_->full_name } $repo->get_methods;
-  my $eps = $client->endpoints();
-  my @invokers = map { $_->{invoker} }
-                 grep { $_->{lazy} }
-                 values %$eps;
-  if (@invokers) {
-    # Ugh.  Scarily recursive.
-    my $getMethods = $repo->get_method('froody.reflection.getMethods');
-    for (@invokers) {
-      my $methods = $_->invoke( $getMethods, $args )->as_terse->content->{method};
-      $methods{$_}++ for @$methods;
-    }
-  }
-
+  my %methods = map { $_ => 1 } 
+                map { $_->full_name } 
+                $repo->get_methods;
+  
   return {
     method => [ sort map { $_ } keys %methods],
   };
@@ -153,9 +142,9 @@ sub getErrorTypes
   my ($self, $args, $metadata) = @_;
 
   return {
-    errortype => [ sort 
+    errortype => [ sort
+                   grep { $_ }
                    map { $_->full_name } 
-                   grep { $_->full_name } 
                    $metadata->{dispatcher}->repository->get_errortypes ],
   };
 }
@@ -172,7 +161,7 @@ sub getErrorTypeInfo
 
   my $repo = $metadata->{dispatcher}->repository;
   my $et = $repo->get_errortype($args->{code});
-  return $et->example_response; 
+  return _errortype_hash($et->example_response); 
 }
 
 =item getSpecification($args, $metadata)
@@ -190,6 +179,7 @@ sub getSpecification {
                   sort { $a->[1] cmp $b->[1] } 
                   map { [$_, $_->full_name ] } 
                   $repo->get_methods ];
+                  
   my $errortypes = [ 
                    map { _errortype_hash($_->[0]->example_response) }
                    sort { $a->[1] cmp $b->[1] }
@@ -208,8 +198,8 @@ sub _errortype_hash {
   my $example = shift;
   my $xml = $example->as_xml->xml; 
   my $ret = {
-    code => $xml->findvalue('/rsp/errortype/@code'),
-    -text => join('', map { $_->toString } ($xml->findnodes('/rsp/errortype/*')))
+    code => $xml->findvalue('/rsp/err/@code'),
+    -text => join('', map { $_->toString } ($xml->findnodes('/rsp/err/*')))
   };
   return $ret;
 }

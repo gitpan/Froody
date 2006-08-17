@@ -217,6 +217,14 @@ sub content
   return $ret;
 }
 
+# Use this only when you're really sure that you have
+# valid terse structure and data (ie, don't.)
+sub _valid_content {
+  my $self = shift;
+  $self->SUPER::structure(shift);
+  $self->SUPER::content(shift);
+}
+
 sub _validate_content
 {
   my $self = shift;
@@ -238,10 +246,14 @@ sub structure
 sub as_error
 {
   my $self = shift;
+  my $data = $self->content;
+  my $code = delete $data->{code};
+  my $msg  = delete $data->{msg};
   
   my $error = Froody::Error->new(
-    $self->content->{code},
-    $self->content->{message},
+    $code,
+    $msg,
+    $data
   );
   
   return Froody::Response::Error->new()

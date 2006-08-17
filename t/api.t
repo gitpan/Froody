@@ -166,19 +166,31 @@ is($fish->name, 'foo.fish', "fish name");
 is($fred->name, 'foo.fish.fred', "fred name");
 is($default->name, '', "default name");
 
-is_deeply($fish->structure, {
+eq_or_diff($fish->structure, {
             'err' => {
-                     'elts' => [
-                                 'foo'
-                               ],
-                     'attr' => [
-                                 'code',
-                                 'msg'
-                               ]
-                   }
+                     'elts'  => [ 'foo' ],
+                     'attr'  => [ 'code', 'msg' ],
+                     'multi' => 0,
+                     'text' => 0,
+                   },
+            'err/foo' => {
+              elts => [],
+              attr => [],
+              text => 1,
+              multi=> 0
+            },
+            '' => {
+                    'elts' => [
+                                'err'
+                              ],
+                    'text' => 0,
+                    'multi' => 0,
+                    'attr' => []
+                  },
+
 }, "fish struct");
 
-is_deeply($fred->structure, {
+eq_or_diff($fred->structure, {
           'err/bars/bar' => {
                             'elts' => [],
                             'text' => 1,
@@ -186,21 +198,32 @@ is_deeply($fred->structure, {
                             'attr' => []
                           },
           'err/bars' => {
-                        'elts' => [
-                                    'bar'
-                                  ],
-                        'attr' => []
+                        'elts' => [ 'bar' ],
+                        'attr' => [],
+                        multi => 0,
+                        text => 0,
                       },
+          'err/foo' => {
+              elts => [],
+              attr => [],
+              multi => 0,
+              text => 1
+          },
           'err' => {
-                     'elts' => [
-                                 'bars',
-                                 'foo'
-                               ],
-                     'attr' => [
-                                 'code',
-                                 'msg'
-                               ]
-                   }
+                     'elts' => [ 'bars', 'foo' ],
+                     'attr' => [ 'code', 'msg' ],
+                     'multi' => 0,
+                      'text' => 0,
+                   },
+          '' => {
+                  'elts' => [
+                              'err'
+                            ],
+                  'text' => 0,
+                  'multi' => 0,
+                  'attr' => []
+                },
+
 }, "fred struct");
 
 eq_or_diff($default->structure, {
@@ -210,5 +233,5 @@ eq_or_diff($default->structure, {
                        'code',
                        'msg'
                      ]
-         }
+         },
 }, "default struct");

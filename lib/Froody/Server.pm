@@ -93,14 +93,18 @@ lots of customization in.
 
 =cut
 
+our $D_CACHE;
 sub dispatcher {
   my $class = shift;
-  my $server = $class->server_class->new;
-  my $dispatcher = $class->dispatch_class->new;
-  $dispatcher->response_class($server->response_class)
-             ->error_class($server->error_class);
-  $dispatcher->error_style('response');
-  return $dispatcher;
+  unless ($D_CACHE->{ ref($class) || $class }) {
+    my $server = $class->server_class->new;
+    my $dispatcher = $class->dispatch_class->new;
+    $dispatcher->response_class($server->response_class)
+               ->error_class($server->error_class);
+    $dispatcher->error_style('response');
+    $D_CACHE->{ ref($class) || $class } = $dispatcher;
+  }
+  return $D_CACHE->{ ref($class) || $class };
 }
 
 =item send_header($response, $content_type)

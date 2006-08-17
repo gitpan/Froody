@@ -4,12 +4,11 @@ use warnings;
 use XML::LibXML;
 use Froody::Method;
 use Froody::ErrorType;
-use Froody::Response::XML;
+use Froody::Response::Terse;
 use Froody::Logger;
 my $logger = get_logger("froody.api.xml");
 
 use base qw(Froody::API);
-
 use Scalar::Util qw(weaken);
 
 =head1 NAME
@@ -81,13 +80,20 @@ sub load_spec {
   Froody::Error->throw("froody.xml.invalid", "Invalid xml passed: $@")
     if $@;
   $doc->indexElements;
+  
+  my $method_node_path = '/spec/methods/method';
+  my $error_node_path = '/spec/errortypes/errortype';
+  if  ($doc->documentElement->nodeName eq 'rsp') {
+    $method_node_path = '/rsp'.$method_node_path;
+    $error_node_path = '/rsp'.$error_node_path;
+  }
 
   my @methods = map { $class->load_method($_) }
-    $doc->findnodes('//spec/methods/method')
+    $doc->findnodes($method_node_path)
       or Froody::Error->throw('froody.xml.nomethods', "no methods found in spec!");
     
-  my @errortypes =map { $class->load_errortype($_) }
-    $doc->findnodes('//spec/errortypes/errortype');
+  my @errortypes = map { $class->load_errortype($_) }
+    $doc->findnodes($error_node_path);
 
   return (@methods, @errortypes);
 }
@@ -113,40 +119,25 @@ sub load_method {
        .$method_element->toString);
   my $full_name = $name_element->nodeValue;
 
-  # work out what the response should be
-  my ($structure, $example);
-  
-  my ($response_element) = $class->_extract_response($method_element, $full_name);
-  if ($response_element) {
-    # TODO, This encoding is *all* wrong
-    my $doc = XML::LibXML::Document->new( "1.0", "utf-8");
-    my $rsp = $doc->createElement("rsp");
-    $rsp->setAttribute("stat", "ok");
-    $rsp->addChild($response_element);
-    $doc->setDocumentElement($rsp);
-    $example = Froody::Response::XML->new->xml( $doc );
-    $structure = $class->_extract_structure($response_element);
-  }
 
   # create a new method
-  my $method = 
-    Froody::Method->new()
+  my $method = Froody::Method->new()
                   ->full_name($full_name)
                   ->arguments($class->_arguments($method_element))
-                  ->structure($structure || {})
                   ->errors($class->_errors($method_element))
                   ->needslogin($class->_needslogin($method_element));
-
-  # set the example response's method
-  # weaken it so we don't leak memory faster than a certain mac app that I
-  # can't mention for libel reasons
-  if ($example)
-  {
-    $example->structure($method);
-    weaken($example->{structure});
+  my ($response_element) = $class->_extract_response($method_element, $full_name);
+  if ($response_element) {
+    my ($structure, $example_data) = $class->_extract_structure($response_element);
+    $method->structure($structure);
+    my $example = Froody::Response::Terse->new;
+    $example->_valid_content($method, $example_data);
     $method->example_response($example);
+    weaken($example->{structure});
+  } else {
+    $method->structure({})
   }
-  
+
   my $desc = $method_element->findvalue("./description");
   $desc =~ s/^\s+//;
   $desc =~ s/\s+$//;
@@ -246,58 +237,121 @@ sub _text_only {
   return 1 if $entry->{text};
 }
 
+sub _construct_node {
+    my $child_spec = shift;
+    my $nn         = shift;
+    my $data       = shift;
+        
+    my $cdata = { };
+    my $occurrences = $child_spec->{$nn};
+    # Upgrade multi items transparently.
+    if ($occurrences  > 1 && ( !defined ($data->{$nn}) 
+        || ref $data->{$nn} ne 'ARRAY')) {
+      $data->{$nn} = [ $data->{$nn} || () ];
+    } 
+    
+    if ($occurrences > 1) {
+      push @{ $data->{$nn} }, $cdata;
+    } else {
+      $data->{$nn} = $cdata;
+    }
+    return $cdata;
+}
+
 sub _xml_to_structure_hash {
   my $node = shift;
 
   # Each element is explained in the top level results hash.
-  my $result;
-
-  my $trans; #This allows us to call ourselves recursively.
-  $trans = sub {
-    my $node = shift;
-    my $parent = shift;
-
-    my $name = $node->nodeName;
-
-    my $path = $parent ? "$parent/$name" : $name;
-
-    # If seen, don't reprocess the children and mark it as multi.
-    # This assumes that the content of the multiple entries are the same.
-    if (exists $result->{$path}) {
-      $result->{$path}{multi} = 1; 
-      return;
-    }
-    for ($node->attributes) {
-      next unless $_;
-      $result->{$path}{attr}{$_->nodeName} = 1;
-    }
+  my ($spec, $example) = ({},{});
+  my $name = $node->nodeName;
+  $spec->{''}{elts}{ $name }++;
+  
+  my @list = ( $node, $name, $example, undef );
+ 
+  while( @list ) {
+    my ($node, $path, $data, $parent) = splice @list, 0, 4; 
+    
+    # Add all non text child nodes to the end of the list.
     my @children = $node->childNodes;
-    $result->{$path}{text} = 1 if grep { $_->isa('XML::LibXML::Text') 
-                                        && $_->textContent =~ /\S/ } @children;
-    @children = grep { $_->isa('XML::LibXML::Element') } @children;
-    $result->{$path}{elts}{$_} = 1 for (map { $_->nodeName }  @children );
-    foreach (@children) {
-      $trans->($_, $path);
+    my $name = $node->nodeName;
+    my $prefix = $path ? "$path/" : "";
+    my $child_spec = $spec->{$path}{elts} = {};
+    my @elements;
+    my $has_non_text_nodes = 0;
+    for (@children) {
+        $has_non_text_nodes ||= 1 unless $_->isa('XML::LibXML::Text');
+        push @elements, $_
+            if $_->isa('XML::LibXML::Element');
     }
-    foreach (@children) {
-      my $childkey = join('/', $path, $_->nodeName);
-      if (my $ret = $result->{$childkey}) {
-      delete $result->{$childkey}
-        if _text_only($result->{$childkey});
-      }
+    
+    for my $child ( @elements ) {
+        my $nn = $child->nodeName;
+        $child_spec->{$nn}++;
+        my $cdata = _construct_node($child_spec, $nn, $data);
+        push @list, ($child, $prefix.$nn, $cdata, $data);
     }
-  };
+              
+    foreach ($node->attributes) {
+      my $aname = $_->nodeName;
+      $spec->{$path}{attr}{$aname}++;
+      $data->{$aname} = $_->nodeValue;
+    }
+    
+    my $is_nonempty_root = !length($prefix) && $spec->{$path};
+    $spec->{$path}{text} = 1 
+      unless $has_non_text_nodes || $is_nonempty_root;
 
-  $trans->($node, '');
-
-  foreach my $key (keys %$result) {
-    foreach (qw{attr elts}) {
-      $result->{$key}{$_} = [ sort keys %{$result->{$key}{$_}} ]
+    if ($spec->{$path}{text}) {
+      my $text = $node->findvalue('./text()');
+      $text =~ s/^\s+//;
+      $text =~ s/\s+$//;
+     #warn Dumper($name, $spec->{$path}, $data, $parent);
+      my $pdata = $parent->{$name};
+      if (ref $pdata eq 'HASH') {
+        if (keys %$pdata) {
+          $pdata->{-text} = $text;
+        } else {
+          $parent->{$name} = $text;
+        }
+      } elsif (ref $pdata eq 'ARRAY') {
+        #$pdata = [ grep { ref $_ } @$pdata ];
+       $data->{-text} = $text;
+      } 
     }
   }
 
-  return $result;
+  _flatten_specification($spec);
+
+  # TODO: Flatten the text nodes.
+
+  return $spec, $example;
       # TODO: Handling types is a Service level detail.
+}
+
+sub _flatten_specification {
+    my $spec = shift;
+    
+    # Flatten element and attribute names, and make
+    # sure that the multiplicity flag is correctly set.
+    foreach my $key (keys %$spec) {
+    # Flatten the list of names
+    my $prefix = $key;
+    $prefix .= $prefix ? '/' : '';
+    foreach my $name (qw{attr elts}) {
+      my @names = sort keys %{ $spec->{$key}{$name} };
+      if ($name eq 'elts') {
+        for my $cpath (@names) {
+            $spec->{$prefix.$cpath}{multi} = ($spec->{$key}{$name}{$cpath} > 1) 
+                                           ? 1
+                                           : 0
+                                           ;
+        }
+      }
+      $spec->{$key}{$name} = \@names;
+    }
+    $spec->{$key}{multi} ||= 0;
+    $spec->{$key}{text}  ||= 0;
+    }
 }
 
 sub _errors {
@@ -344,6 +398,7 @@ this returns an instance of Froody::ErrorType that represents that error type.
 
 sub load_errortype  {
   my ($class, $et_element) = @_;
+  
   unless (UNIVERSAL::isa($et_element, 'XML::LibXML::Element')) {
     Froody::Error->throw("perl.methodcall.param",
                           "we were expected to be passed a XML::LibXML::Element!");
@@ -351,11 +406,14 @@ sub load_errortype  {
   
   # work out the name of the element
   my $code = $et_element->findvalue('./@code') || '';
+  Carp::cluck "no code in ".$et_element->toString(1) unless $code;
 
   my $et = Froody::ErrorType->new;
   $et->name($code);
-  my $et_str = $et_element->to_literal();
-  if ($et_str =~ /</) {
+
+
+  unless (grep { !UNIVERSAL::isa($_, "XML::LibXML::Text") } $et_element->childNodes) {
+    my $et_str = $et_element->textContent;
     local $@;
     eval { 
       my $new_et = $class->parser()->parse_string(qq{<errortype code="$code">$et_str</errortype>}); 
@@ -366,33 +424,27 @@ sub load_errortype  {
     }
   }
 
-  my $spec = $class->_extract_structure($et_element);
-  
+  my ($spec, $example_data) = $class->_extract_structure($et_element);
   foreach (keys %$spec) {
     my $val = delete $spec->{$_};
     s{^errortype}{err};  # 'errortype's are really 'err's
     $spec->{$_} = $val;
   }
-
-  my $example;
-  if ($spec) {
-    # TODO, This encoding is *all* wrong
-    my $doc = XML::LibXML::Document->new( "1.0", "utf-8");
-    my $rsp = $doc->createElement("rsp");
-    $rsp->setAttribute("stat", "fail");
-    $rsp->addChild($et_element);
-    $doc->setDocumentElement($rsp);
-    $example = Froody::Response::XML->new->xml( $doc );
-  }
-
+  $spec->{''}{elts} = [ 'err' ];
+  
   # enforce msg (code is already in here!)
   push @{ $spec->{err}{attr} }, "msg";
   
-  # set the structure
   $et->structure($spec);
+
+  my $example = Froody::Response::Terse->new
+                                       ->status('fail');
+  $example->_valid_content($et, $example_data);
+  weaken($example->{structure});
+  
   $et->example_response($example);
 
-  return $et
+  return $et;
 }
 
 =item parser

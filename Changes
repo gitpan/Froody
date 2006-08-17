@@ -1,3 +1,15 @@
+42.011
+  * Amend arguments to allow argument type aliases
+  * Fix the documentation for the Walker class.
+  * Strip whitespace in attribute _NAMES_, not attribute values.
+  * Can set timeout for SimpleClient when creating the client
+  * Fixing the way that the XML API is loaded. We should not be holding on to
+    the DOM tree for each example response.
+  * Improved XML api code that constructs examples as it creates the specification.
+  * fix froody error shapes -- they now pass across the wire for reflection
+  * remove XML dom node storage inside of froody
+  * avoid cloning data when not necessary
+
 42.010
   * delete undef arguments early instead of trying to encode them
   * handle the case where tempfile is undef during an upload

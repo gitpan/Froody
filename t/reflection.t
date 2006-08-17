@@ -17,10 +17,8 @@ use lib 't/lib';
 use_ok ('Other');
 use Froody::Dispatch;
 
-my $client = Froody::Dispatch->new;
+my $client = Froody::Dispatch->config({modules=>['Other']});
 my $repo = $client->repository;
-
-$repo->register_method($_) for Other->load();
 
 is scalar $repo->get_methods(), 6, 'One method plus the reflection methods';
 is scalar $repo->get_methods(qr'^reflection'), 0, 'partial query';

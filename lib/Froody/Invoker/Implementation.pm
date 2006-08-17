@@ -127,7 +127,7 @@ sub pre_process {
     }
     for my $type (@{$spec->{$argname}{type}}) {
       next if $type eq 'remaining';
-      # XXX: make the type plugin decalre this
+      # XXX: make the type plugin declare this
       if (ref($param) eq 'ARRAY' && any { $type eq $_ } qw(text number)) {
         for (0..$#{$param}) {
           $param->[$_] = Froody::Argument->process($type, $param->[$_], $check);

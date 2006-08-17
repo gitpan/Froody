@@ -7,6 +7,7 @@ use warnings;
 
 sub implements { DTest => "foo.test.*" }
 
+sub sloooow { sleep 300; die 'should never get here' }
 
 sub add { return { '-text' => "\x{e9}" } }
 

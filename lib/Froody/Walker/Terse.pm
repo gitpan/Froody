@@ -36,6 +36,8 @@ is _only_ text content in this node.
 sub text_only_spec {
   my ($self, $path) = @_;
   my $spec = $self->spec_for_xpath($path);
+  return 1 unless $spec;
+  warn "No spec for $path" unless $spec;
   return 0 if (@{$spec->{elts}} || @{$spec->{attr}});
   return 1;
 }
@@ -55,7 +57,9 @@ sub init_target {
   if (my $spec = $self->spec_for_xpath($path)) {
     for (@{ $spec->{elts} }) {
       # initialize an empty list if we're expecting a list at all
-      $target->{$_} = [] if $self->spec_for_xpath( $path ."/". $_ )->{multi};
+      my $elt_spec = $self->spec_for_xpath( $path ."/". $_ );
+      next unless $elt_spec;
+      $target->{$_} = [] if $elt_spec->{multi};
     }
   }
   return $target;
@@ -63,6 +67,8 @@ sub init_target {
 
 sub validate_source {
   my ($self, $source, $path) = @_;
+  
+  #use Carp; Carp::cluck;
   
   my $spec = $self->spec_for_xpath($path);
   

@@ -16,6 +16,8 @@ use Test::More tests => 6;
 package Thingy::API;
 use base qw(Froody::API);
 use Froody::API::XML;
+use Froody::Repository;
+
 use Test::Logger;
 sub load { return Froody::API::XML->load_spec(<<'ENDOFSPEC') }
 <spec>
@@ -74,7 +76,8 @@ package main;
 
 use Froody::Dispatch;
 my $dispatch = Froody::Dispatch->new();
-my $repos = $dispatch->default_repository();
+$dispatch->repository(Froody::Repository->new());
+my $repos = $dispatch->repository();
 ThingyClass->register_in_repository($repos);
 
 is($repos->get_methods, 7, "right number of methods.");

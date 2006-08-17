@@ -2,8 +2,9 @@ package Froody::Argument::Multipart;
 use strict;
 use warnings;
 use base 'Froody::Argument';
+use Carp qw( croak );
 
-sub type { 'multipart' }
+sub type { 'multipart' , 'file' }
 
 sub process {
   my ($class, $param, $check) = @_;

@@ -219,7 +219,8 @@ sub stringify {
   
   my $return = $self->code;
   $return .= " - " . $self->message if length($self->message);
-  $return .= "\nData:\n".Dump($self->data) if defined $self->data;
+  # don't call the ->data method here, as we don't really need to clone the data
+  $return .= "\nData:\n".Dump($self->{-data}) if defined $self->{-data};
   return $return . "\nStack trace:\n$strace"
 }
 

@@ -20,7 +20,7 @@ my $terse_driver = Froody::Walker::Terse->new;
 
 ok( my $walker = Froody::Walker->new({
   spec => {
-    top => undef,
+    top => { text => 1},
   }
 }), "created very simple walker" );
 ok( $walker->from($xml_driver)->to($terse_driver) );

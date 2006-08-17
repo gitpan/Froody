@@ -12,7 +12,10 @@ use lib 't/lib';
 use Testproject::Pluggable;
 use Froody::Dispatch;
 
-my $client = Froody::Dispatch->new();
+my $client = Froody::Dispatch->config({
+  modules =>[qw(Testproject::Pluggable)],
+  filters =>[qw(**)]
+});
 
 ok(my $ret = $client->call('testproject.object.session_test', session_id => 'fooo'));
 

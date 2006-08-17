@@ -35,6 +35,7 @@ $method->structure({
      attr => [qw/nick number/],
      multi => 1,
    },
+  'people/person/name' => { text => 1, multi => 0, elts => [], attr => [] }
 });
 $method->arguments({ 'group' => {
    multiple => 0, 

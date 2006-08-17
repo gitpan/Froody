@@ -8,24 +8,24 @@ Froody::Walker;
   my $method_name = $froody_method->name;
   
   # create a new walker that knows about the spec
-  my $walker = Froody::Walker::TerseToXML->new($source);
+  my $walker = Froody::Walker->new($spec, "method name");
+  my $terse = Froody::Walker::Terse->new;
+  my $xml = Froody::Walker::XML->new;
+  $walker->from($terse)->to($xml);
   
   # walk $source turning it into xml
-  my $xml = $walker->walk($spec, $method_name);
+  my $xml = $walker->walk($data);
 
 =head1 DESCRIPTION
 
-Walker classes are constructed with a data source.  We can then ask them
-to convert, using a specification, that data source into another format.
+Walker classes are constucted with a description of the structure it
+will generate. That structure is a very specific grammar listing
+paths into the object that can be built.
 
-A walker object has its data source (the 'original data structure'), as well as
-its state (an 'opaque data structure' which we're constructing).
-
-The following methods are used to combine the states, according to the response
-structure, to a final wanted object.
-
-You need to subclass C<Froody::Walker> to implement a walker which will define
-how the data source is walked and presented.
+Setting L<from|/METHODS>  and L<to|/METHODS> designates the source and
+targets for the transformation, respectively. We currently provide
+two data structures C<Froody::Walker::Terse> and C<Froody::Walker::XML>
+as transformation engines, which will both work bi-directionally.
 
 =cut
 
@@ -48,11 +48,11 @@ my $logger = get_logger("froody.walker");
 
 =over
 
-=item $self->walk($spec, $method_name)
+=item $self->walk($spec, $data)
 
-Method that's designed to be called on the root node.  Walks the data structure
-we're configured with from the top and returns the new data structure.
-$method_name is used for debugging info.
+Walks the structure of data with the source C<Froody::Walker::Driver>,
+returning a transformed version of the data as per the designation of
+the target.
 
 =cut
 
@@ -72,33 +72,34 @@ sub walk {
     return $result; # $result->{ $toplevel[0] };  # Terse specific. move to XMLToTerse
 }
 
-=item $self->walk_node($spec, $xpath_key, $method_name)
+=item $self->walk_node($spec, $source, $xpath_key, [ $parent_target ])
 
 Walks the data structure this object holds with the specification, starting at
-the part of the spec indicated by $xpath_key.  The $method_name is used for
-debugging info.
+the part of the spec indicated by $xpath_key. 
+
+C<$parent_target> is used for accumulation of results at the current level.
 
 =cut
 
 sub walk_node {
     my ($self, $source, $xpath_key, $parent_target) = @_;
-    $logger->info("Walking path '$xpath_key' into source '$source'");
+    $logger->debug("Walking path '$xpath_key' into source '@{[ $source || '' ]}'");
     my $target = $self->to->init_target($xpath_key, $parent_target)
       or Froody::Error->throw('froody.xml', "init_target failed to create a target");
 
     # get the part of the spec for where we are now looking at
     my $global_spec = $self->spec || {};
-    my $spec = $global_spec->{ $xpath_key } || $self->default_spec();
+    my $spec = $global_spec->{ $xpath_key };
 
     $self->from->validate_source($source, $xpath_key);
 
     # get text node (simplest case)
     if (!$spec or $spec->{text}) {
-      $logger->info("getting text node");
+      $logger->debug("getting text node");
       my $value = $self->from->read_text($source, $xpath_key);
       if (defined($value)) {
         $value = "$value";
-        $logger->info("  got '$value'");
+        $logger->debug("  got '$value'");
         $target = $self->to->write_text($target, $xpath_key, $value);
         Froody::Error->throw('froody.xml', "write_text did not return a target")
           unless defined($target);
@@ -112,22 +113,24 @@ sub walk_node {
     
     # HANDLE all simple values.
     for my $attr (reverse @{ $spec->{attr} }) {
-      $logger->info("Getting attribute '$attr'");
+      $logger->debug("Getting attribute '$attr'");
       my $value = $self->from->read_attribute($source, $xpath_key, $attr);
       next unless defined($value);
       $value = "$value";
-      $logger->info("  got $value");
+      $logger->debug("  got $value");
       $target = $self->to->write_attribute($target, $xpath_key, $attr, $value)
         or Froody::Error->throw('froody.xml',"write_attribute did not return a target");
     }
 
     for my $element (@{ $spec->{elts} }) {
-      $logger->info("getting element $element");
+      $logger->debug("getting element $element");
       my $local_xpath = $xpath_key ? "$xpath_key/$element" : $element;
       my @local_source = $self->from->child_sources($source, $xpath_key, $element )
         # if there's no source, we don't make a target - no empty hashes,
         # xml nodes, etc, etc.
         or next;
+        
+      #warn "Here in elts for $local_xpath";
       if (@local_source > 1 and !$global_spec->{$local_xpath}{multi}) {
          Froody::Error->throw('froody.xml', 
          "got multiple entries for path '$local_xpath', but the spec suggests there should be only one");
@@ -135,14 +138,14 @@ sub walk_node {
       for my $this_source (@local_source) {
         Froody::Error->throw('froody.xml', "source for path '$local_xpath' is undefined")
           unless defined($this_source);
-        $logger->info("local source '$this_source'");
+        $logger->debug("local source '$this_source'");
         my $local_target = $self->walk_node( $this_source, $local_xpath, $target );
         $target = $self->to->add_child_to_target( $target, $xpath_key, 
                                                  $element, $local_target )
           or Froody::Error->throw('froody.xml', "add_child_to_target did not return a target");
       }
     }
-    $logger->info("done walking path $xpath_key");
+    $logger->debug("done walking path $xpath_key");
     return $target;
 }
 
@@ -201,7 +204,7 @@ path.
 sub spec_for_xpath {
   my ($self, $xpath) = @_;
   my $spec = $self->spec->{$xpath} if $self->spec && $xpath;
-  return $spec || $self->default_spec();
+  return $spec;
 }
 
 =item toplevels()
@@ -217,6 +220,7 @@ sub toplevels {
   my @toplevel = grep m{^[^/]+$}, keys %{ $self->spec };
 
   if (@toplevel > 1) {
+    warn Dumper($self->spec); use Data::Dumper;
     Froody::Error->throw("froody.xml", 
                          "invalid Response spec (multiple toplevel nodes!)")
   }
@@ -229,14 +233,6 @@ sub toplevels {
   
   return @toplevel;
 }
-
-=item default_spec()
-
-Returns the default Froody spec (a text-only node)
-
-=cut
-
-sub default_spec { return { text => 1, attr => [], elts => [] } };
 
 =back
 

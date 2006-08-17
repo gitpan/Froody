@@ -12,6 +12,7 @@ package Froody::Server::Test;
 use warnings;
 use strict;
 use Froody::Dispatch;
+use Froody::Server::Standalone; 
 
 =head1 METHODS
 
@@ -27,31 +28,63 @@ testing of implementations. The server will be stopped on script exit.
 
 # This is our random port, which is an attempt to not tromp over other users who might
 # be testing their own froody clients at the same time.
-my $port = 30_000 + ( $> % 400 );
+our $port = 30_000 + ( $> % 400 );
 
 my $child;
 
-# start the web server
-sub client {
+=item start
+
+Starts the Test server with a list of configuration details as specified
+by the C<config> method of L<Froody::Dispatch>. Returns the pid of the
+started process, or 0 if it happens to be the child process.
+This will only start the server once, without calling C<stop> first.
+
+=cut
+
+sub start {
   my ($class, @impl) = @_;
-  
+  return $child if defined $child;
   unless ($child = fork()) {
   
     # loading Froody::Server::Standalone does some things
     # to our enviroment (for example, it piddles with the SIG handlers
     # so we only want to do that in the child.)
-  
-    eval q[ use lib 't/lib'; ]; die $@ if $@;
-    for (@impl) {
-      eval qq[ use $_ ]; die $@ if $@;
-    }
-    eval q[ use Froody::Server::Standalone; ]; die $@ if $@;
-    
-    
+      
     my $server = Froody::Server::Standalone->new();
+    $server->config({ 
+        modules => \@impl, 
+    });
     $server->port($port);
     $server->run;
   }
+  return $child;
+}
+
+=item endpoint
+
+Returns the endpoint for the Test server
+
+=cut
+
+sub endpoint {
+    my $class = shift;
+    return "http://localhost:$port/";
+}
+
+# start the web server
+
+=item client
+
+Returns a C<Froody::Dispatch> based client that points to the test
+server. As a side-effect, it will start up the test server if it has
+not already been started.
+
+=cut
+
+sub client {
+  my ($class, @impl) = @_;
+  
+  $class->start(@impl);
   
   sleep 1;
   my $client = Froody::Dispatch->new();
@@ -78,6 +111,8 @@ sub stop {
       exit unless kill 0, $child;
       sleep 1;
     }
+    
+    $child = undef;
   }
 }
 

@@ -73,7 +73,6 @@ sub new {
   my $class = shift;
   my $self = $class->SUPER::new(@_);
   $self->endpoints({}) unless $self->endpoints;
-  $self->filters([]) unless $self->filters; 
   $self->error_class('Froody::Response::Error') unless $self->error_class;
   $self;
 }
@@ -164,8 +163,7 @@ sub config {
   unless (ref $self) {
     $self = $self->new; # we should be an instance.
   }
- 
-  my $repository = new Froody::Repository();
+  my $repository = Froody::Repository->new;
   $self->repository($repository);
   for (@{ $args->{includes} }) {
     unshift @INC, $_; #extend the search path
@@ -193,18 +191,17 @@ sub add_implementation {
   
   eval " use $module; 1" or die $@;
   my ($api, $invoker);
+  my $repository = $self->repository;
   $invoker = $self->endpoints->{$module}{invoker};
   if ($module->isa('Froody::API')) {
     $api = $module;
     $invoker ||= (bless {}, "Froody::Invoker");  
+    $self->repository->register_api( $api, $invoker, @filters );
   } elsif ($module->isa("Froody::Implementation")) {
     my @imp_filters;
-    ($api, @imp_filters) = $module->implements;
-    $invoker ||= $module->new;
-    push @filters, @imp_filters;
+    $module->register_in_repository($repository, @filters);
   }
   $self->endpoints->{$module} = { invoker => $invoker, loaded => 1 };
-  $self->repository->register_api( $api, $invoker, @filters );
 }
 
 =item cli_config
@@ -247,6 +244,8 @@ sub default_repository
   our $default_repository;
   unless ($default_repository)
   {
+    require Carp;
+    Carp::cluck "DEPRECATED: This is going away. Don't expect the default repo to introspect.";
     $default_repository = Froody::Repository->new();
     
     # for every module already loaded that is a Froody::Implementation
@@ -353,7 +352,7 @@ sub load_specification {
     my @structures =  Froody::API::XML->load_spec($response->as_xml->xml);
     $repo->load($invoker, \@structures, @method_filters);
     $endpoint->{$endpoint}{loaded} = time;
-  }
+  } 
 }
 
 =item reload ([$time_threshold])
@@ -446,15 +445,17 @@ sub dispatch {
   my $self = shift;
   my $args = { @_ };
 
-  # Strip leading and trailing whitespace in all incomming attributes.
+  # Strip leading and trailing whitespace in all incomming attribute names.
   if (defined $args->{method}) {
     $args->{method} =~ s/^\s+//;
     $args->{method} =~ s/\s+$//;
   }
   for (keys %{ $args->{params} }) {
-    next unless defined( $args->{params}{$_} );
-    $args->{params}{$_} =~ s/^\s+//;
-    $args->{params}{$_} =~ s/\s+$//;
+    next unless /^\s|\s$/; # if there is any leading or trailing whitespace in the key name
+    my $val = delete $args->{params}{$_};
+    s/^\s+//;
+    s/\s+$//;
+    $args->{params}{$_} = $val;
   }
 
   my $response;
@@ -578,7 +579,7 @@ sub get_methods {
   my ($self, @filters) = @_;
 
   unless (@_ > 1 ) {
-    @filters = @{ $self->filters };
+    @filters = $self->filters;
   }
   if (!defined $_[0]) {
     @filters = ();

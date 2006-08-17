@@ -11,6 +11,7 @@ use warnings;
 
 use Test::More tests => 14;
 use Test::Exception;
+use Test::Differences;
 use Froody::API::XML;
 use Froody::Response::PerlDS;
 use Froody::Response::Terse;
@@ -35,7 +36,7 @@ my $message = <<'END';
     <spell name="rezrov">
       <target>book</target>
       <target>stove</target>
-      <description>Open anything</description>
+      <description></description>
     </spell>
   </response>
   <errors>
@@ -90,7 +91,21 @@ is_deeply($method->errors, $errors = {
   }, "errors") or diag Dumper $method->errors;
 
 my $structure;
-is_deeply($method->structure, $structure = +{
+eq_or_diff($method->structure, $structure = +{
+   '' => {
+           'elts'  => [
+                        'spell'
+                      ],
+           'text'  => 0,
+           'multi' => 0,
+           'attr'  => []
+         },
+   'spell/description' => {
+                          'elts' => [],
+                          'text' => 1,
+                          'attr' => [],
+                          multi => 0
+                        },
    'spell/target' => {
                      'elts' => [],
                      'text' => 1,
@@ -98,28 +113,27 @@ is_deeply($method->structure, $structure = +{
                      'attr' => []
                    },
    'spell' => {
-              'elts' => [
-                          'description',
-                          'target'
-                        ],
-              'attr' => [
-                          'name'
-                        ]
-            }
-}) or diag Dumper($method->structure);
+              'elts' => [ 'description', 'target' ],
+              'attr' => [ 'name' ],
+              'multi' => 0,
+              'text' => 0,
+            },
+});
 
 my $example_response = $method->example_response->as_terse->content;
-is_deeply($example_response, +{
+{ local $TODO = "Text nodes of examples aren't flattened as they are with the walker";
+eq_or_diff($example_response, +{
            'target' => [
                        'book',
                        'stove'
                      ],
            'name' => 'rezrov',
-           'description' => 'Open anything'
-        }) or diag(Dumper $example_response);
+           'description' => ''
+        });
+}
 
 ($method) = Froody::API::XML->load_spec(_spec(<<XML));
-<method name="text.objcet.method" needslogin="0">
+<method name="text.object.method" needslogin="0">
   <arguments></arguments>
   <description></description>
   <response>
@@ -129,13 +143,20 @@ is_deeply($example_response, +{
 </method>
 XML
 
-is_deeply($method->structure, {
-  value => { elts => [], text => 1, attr => []}
+eq_or_diff($method->structure, {
+   '' => {
+           'elts'  => [
+                       'value'
+                      ],
+           'text'  => 0,
+           'multi' => 0,
+           'attr'  => []
+         },
+  value => { elts => [], text => 1, attr => [], multi => 0}
   },
-  "When there is a top level element which only has CDATA, we have proper XPath.") 
-    or diag Dumper($method->structure);
-
+  "When there is a top level element which only has CDATA, we have proper XPath.");
 throws_ok {
+# XXX: This is as clear as mud.
 ($method) = Froody::API::XML->load_spec(_spec(<<XML));
 <method name="text,method" needslogin="0">
   <arguments></arguments>

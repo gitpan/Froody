@@ -5,7 +5,7 @@
 # other methods
 ###################################################################
 
-use Test::More tests => 11;
+use Test::More tests => 12;
 use Test::Exception;
 
 use strict;
@@ -16,18 +16,24 @@ use Test::Differences;
 use Test::XML;
 use Froody::Dispatch;
 
-my $client = Froody::Dispatch->new;
+my $client = Froody::Dispatch->config();
 ok my $rs = $client->call('froody.reflection.getMethods'), 
   "Dispatch lives without authorization.";
 
-my $repo = Froody::Dispatch->new->repository;
+my $dispatch  = Froody::Dispatch->new;
+$dispatch->repository( Froody::Repository->new() );
+my $repo = $dispatch->repository;
 my $methods = [sort map { $_->full_name } $repo->get_methods()];
 eq_or_diff( $rs->{method}, $methods, "Get the right list of methods")
   or die Dumper $rs, $methods;
 
+throws_ok { $client->call('froody.reflection.getMethodInfo', 
+                         'method_name' => '   froody.reflection.getMethodInfo');
+} qr/froody.invoke.nosuchmethod - Method '   froody.reflection.getMethodInfo'/;
+
 # note leading and trailing spaces.
 ok $rs = $client->call('froody.reflection.getMethodInfo', 
-                         method_name => '        froody.reflection.getMethodInfo      ');
+                         "\nmethod_name   " => 'froody.reflection.getMethodInfo');
 
 my $method = $repo->get_method('froody.reflection.getMethodInfo');
 

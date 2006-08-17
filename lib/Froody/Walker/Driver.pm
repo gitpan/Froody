@@ -79,8 +79,7 @@ sub spec_for_xpath {
   my ($self, $xpath) = @_;
   my $global_spec = $self->walker->spec;
   my $spec = $global_spec->{$xpath} if $global_spec && $xpath;
-  
-  return $spec || $self->walker->default_spec();
+  return $spec;
 
 }
 

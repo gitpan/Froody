@@ -62,7 +62,8 @@ sub init {
 
   ### default error ###
   
-  $self->register_errortype(Froody::ErrorType->new()->name(""));
+  my $default = Froody::ErrorType->new()->name("");
+  $self->register_errortype($default);
 
   ### reflection methods and errortypes ###
 
@@ -97,7 +98,8 @@ sub register_method {
   } elsif ($old_method->full_name !~ m/^froody\.reflection\./) {
     my $inv = $old_method->invoker;
     
-    Froody::Error->throw("perl.method.alreadyregistered", $method->source." was already registered through ".ref $inv);
+    Froody::Error->throw("perl.method.alreadyregistered", 
+                         $method->source." was already registered through ".ref $inv);
   }
 
   return $self;
@@ -117,7 +119,7 @@ sub get_methods {
   unless (@_) { return values %{ $self->{method_cache} } }
 
   # what methods are we looking for?  Make it a regex if it's not already
-  my $query = ref($_[0]) ? shift : Froody::Method->match_to_regex( shift );
+  my $query = Froody::Method->match_to_regex( shift );
   return grep { $_->full_name =~ $query }
          values %{ $self->{method_cache} };
 }
@@ -160,7 +162,9 @@ sub register_errortype {
   Froody::Error->throw("perl.methodcall.param", "you didn't pass a Froody::ErrorType object")
     unless UNIVERSAL::isa($errortype, 'Froody::ErrorType');
   
-  $self->{errortypes_hash}{ $errortype->name } = $errortype;
+  my $code = $errortype->name;
+  use Carp; Carp::confess unless defined $code;
+  $self->{errortypes_cache}{ $code } = $errortype;
 
   return $self;
 }
@@ -177,7 +181,7 @@ sub get_errortype {
   my $self = shift;
   my $name = shift;
 
-  my $errortype = $self->_errortype_hash->{ $name }
+  my $errortype = $self->{errortypes_cache}{ $name }
     or Froody::Error->throw("froody.invoke.nosucherrortype", "ErrorType '$name' not found");
   return $errortype;
 }
@@ -191,7 +195,7 @@ arguments, or only the methods matching the query if invoked with an argument.
 
 sub get_errortypes {
   my $self = shift;
-  my $err_hash = $self->_errortype_hash;
+  my $err_hash = $self->{errortypes_cache};
   
   # return everything if no arguments
   unless (@_) { return values %{ $err_hash } };
@@ -211,23 +215,19 @@ sub get_closest_errortype {
   my $code = shift;
   my @bits = split /\./, $code;
   
-  my $err_hash = $self->_errortype_hash;
+  my $err_hash = $self->{errortypes_cache};
   
   foreach (reverse 0..$#bits)
   { 
-     my $string = join '.', @bits[0..$_];
-     return $err_hash->{ $string }
-        if $err_hash->{ $string };
+    my $string = join '.', @bits[0..$_];
+    if ($err_hash->{ $string }) {   
+      return $err_hash->{ $string };
+    }
   }
   
   # return the default errortype hash which is always there, as it was
   # created during init.
   return $err_hash->{""};
-}
-
-sub _errortype_hash { 
-  my $self = shift;
-  return $self->{errortypes_hash}
 }
 
 =item register_implementation(PACKAGE NAME)
@@ -289,7 +289,7 @@ Loads a set of method and errortype structures into the repository
 
 sub load {
   my ($self, $invoker, $structures, @method_matches) = @_;
-  
+
   # process each thing based on its type
   foreach my $thingy (@$structures)
   {
@@ -304,7 +304,6 @@ sub load {
       $self->register_method($thingy);
     } elsif ($thingy->isa("Froody::ErrorType")) {
       $self->register_errortype($thingy);
-      next;
     }
   }
 

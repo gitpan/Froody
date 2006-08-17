@@ -16,7 +16,9 @@ use FindBin qw( $Bin );
 # test that upload works the same for both remote and local
 # implementations.
 
-for my $client ( Froody::Server::Test->client("Testproject::Object"), Froody::Dispatch->new() ) {
+my $direct = Froody::Dispatch->config({modules=>['Testproject::Object']});
+
+for my $client ( Froody::Server::Test->client("Testproject::Object"), $direct ) {
 
   ok(my $ret = $client->call('testproject.object.upload', file => [ "$Bin/multipart.t" ] ),
     "sent file upload using arrayref");

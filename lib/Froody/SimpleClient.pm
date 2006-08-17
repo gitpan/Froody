@@ -31,7 +31,9 @@ use Encode qw( encode_utf8 );
 
 =over
 
-=item new( endpoint )
+=item new( endpoint, [ timeout => 30 ] )
+
+We take an endpoint here. Optionally, we also take a timeout in seconds.
 
 =cut
 
@@ -39,7 +41,7 @@ sub new {
   my $class = shift;
   my $endpoint = shift;
   my $self = $class->SUPER::new({ endpoint => $endpoint });
-  $self->{ua} = LWP::UserAgent->new();
+  $self->{ua} = LWP::UserAgent->new( @_ );
   return $self;
 }
 
@@ -66,7 +68,8 @@ sub call {
     die "Error parsing ".$response.": $@";
   }
   unless ($data->{stat} eq 'ok') {
-    Froody::Error->throw($data->{data}{code}, $data->{data}{msg}, $data->{data}{error});
+    my $error = $data->{data};
+    Froody::Error->throw(delete $error->{code}, delete $error->{msg}, $error);
   }
   return $data->{data};
 }
@@ -86,6 +89,7 @@ sub call_raw {
   die "no UA" unless $self->{ua};
 
   # fudge args so we can do the Right Thing with lists and uploads.
+  my $hash_expansion;
   for (keys %args) {
     my $value = $args{$_};
     if (!defined $value) {
@@ -103,8 +107,16 @@ sub call_raw {
       # just CSV
       $args{$_} = join(",", @$value );
 
-    } elsif (ref($args{$_})) {
+    } elsif ($ref eq 'HASH') {
+      die "too many arguments of type 'remaining'; previous was '$hash_expansion' and current is '$_'"
+        if $hash_expansion;
+      $hash_expansion = $_;
+      my $blah = delete $args{$_};
+      %args = ( %args, %$blah );
+
+    } elsif ($ref) {
       die "can't handle type of argument '$_' (is a ".ref($args{$_}).")";
+
     } else {
       $args{$_} = encode_utf8( $args{$_} ) 
     }

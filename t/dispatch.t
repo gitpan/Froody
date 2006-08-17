@@ -30,7 +30,9 @@ my @methods = (
   { method => 'foo.test.getGroups',  value => "\x{2264}" },
 );
 
-my $dispatcher = Froody::Dispatch->new();
+my $dispatcher = Froody::Dispatch->config({
+  modules => ['DTest::Test']
+});
 my ($response, $xml);
 
 # Check that we get back the class and method names we expect
