@@ -31,7 +31,7 @@ sub new {
   my $method = delete $vars->{method};
   $self->method($method);
 
-  my $type = delete $vars->{_froody_type};
+  my $type = delete $vars->{'_type'} || delete $vars->{'_froody_type'};
   $self->type($type);
   
   $self->params($vars);

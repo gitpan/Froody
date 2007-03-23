@@ -2,6 +2,7 @@ bin/find_froody_exceptions
 bin/froody
 bin/froody.cgi
 bin/froodydoc
+bin/froodydoc.js
 bin/what_tests.pl
 Build.PL
 Changes
@@ -60,6 +61,7 @@ lib/Froody/Walker.pm
 lib/Froody/Walker/Driver.pm
 lib/Froody/Walker/Terse.pm
 lib/Froody/Walker/XML.pm
+lib/JavaScript/Standalone/Froody/DocFormatter.js
 Makefile.PL
 MANIFEST			This list of files
 META.yml
@@ -70,10 +72,13 @@ t/001pragmas.t
 t/003pod.t
 t/004uselib.t
 t/api.t
+t/config.t
 t/copy.t
 t/dispatch.t
 t/err_isa.t
 t/error.t
+t/froodydoc_pod_js.t
+t/froodydoc_wiky_js.t
 t/high-level.t
 t/implementation.t
 t/inv_rem.t

@@ -122,7 +122,7 @@ sub Froody::Response::as_xml
   my $parser = XML::LibXML->new();
   my $rendered = $self->render
     or Froody::Error->throw('froody.invoke.badresponse', "No XML returned from call");
-  my $doc = $parser->parse_string($rendered);
+  my $doc = eval { $parser->parse_string($rendered) } or die "$rendered";
   
   my $xml = Froody::Response::XML->new();
   $xml->xml($doc);

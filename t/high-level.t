@@ -5,7 +5,7 @@
 # then make sure that those files exist and are what we expect.
 ############################################################################
 
-use Test::More tests => 36;
+use Test::More tests => 39;
 
 use warnings;
 use strict;
@@ -13,14 +13,22 @@ use Test::Exception;
 use Test::Differences;
 use lib 't/lib';
 use DTest;
+use LWP::Simple ();
 
 use Froody::Server::Test;
 use Froody::SimpleClient;
 
 ok( Froody::Server::Test->start( "DTest::Test" ), 'got interface to client');
 ok( my $real_client = Froody::Server::Test->client, 'got interface to client');
-is $real_client->repository->get_methods, 13, "Right number of methods.";
-is $real_client->repository->get_errortypes, 3, "Right number of error types.";
+
+like( LWP::Simple::get(Froody::Server::Test->endpoint . '?foo=1'),
+	qr/froody.invoke.nomethod/, 'get a froody error');
+
+is $real_client->repository->get_methods, 14, "Right number of methods.";
+
+eq_or_diff [ sort map { $_->full_name } $real_client->repository->get_errortypes],  
+           [ '',  'perl.methodcall.param','test.error',],
+           "Right number of error types.";
 sleep(1);
 ok( my $simple_client = Froody::SimpleClient->new( Froody::Server::Test->endpoint, 
                                                    timeout => 1 ), "got simpleclient" );
@@ -66,8 +74,12 @@ for my $client ( $real_client, $simple_client ) {
   } qr/not found/;
   isa_ok($@, "Froody::Error", "right error") or diag $@;
   undef $@;
+
+  throws_ok {
+    $answer = $client->call('foo.test.badspec');
+  } qr/froody.xml/;
   
-    
+  
   throws_ok {
     $client->call('foo.test.haltandcatchfire');
   } qr/I'm on fire/;
@@ -79,7 +91,6 @@ for my $client ( $real_client, $simple_client ) {
   eq_or_diff $@->data || {}
              , { fire => "++good", napster => '++ungood' }
              , "We threw a data structure.";
-  
   # Die with a non-froody error in the error_handler should return a 500 from the server.
   throws_ok {
     $client->call('foo.test.badhandler');

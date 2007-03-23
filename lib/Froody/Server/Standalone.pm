@@ -38,7 +38,6 @@ use Froody::Request::CGI;
 use Froody::Dispatch;
 
 use Froody::Server;
-use Froody::Renderer::json;
 
 sub handle_request
 {

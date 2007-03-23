@@ -7,10 +7,12 @@
 use strict;
 use warnings;
 
-use Test::More tests => 10;
+use Test::More tests => 12;
 use Test::Exception;
 
 use Froody::Repository;
+use Test::Differences;
+use Froody::Response::Terse;
 
 use lib 't/lib';
 
@@ -39,6 +41,20 @@ throws_ok {
 
 isa_ok $method, 'Froody::Method';
 
-ok my $ret = $client->call('froody.reflection.getSpecification');
+ok my $ret = $client->call('froody.reflection.getMethodInfo', 
+    method_name => 'froody.reflection.getSpecification');
+ok $method = $repo->get_method('froody.reflection.getSpecification');
 
-
+my $buggy = $method->example_response->as_terse->content;
+eq_or_diff $buggy->{errortypes}, { 
+                          'errortype' => [
+                                         {
+                                           '-text' => 'Internal structure of your error type goes here (including XML)',
+                                           'code' => 'mycode'
+                                         },
+                                         {
+                                            '-text' => 'Internal structure of your error type goes here (including XML)',
+                                           'code' => 'mycode'
+                                         }
+                                       ]
+}, "So... we were doing bad things with our examples.";

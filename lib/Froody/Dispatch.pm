@@ -50,7 +50,6 @@ use Froody::Repository;
 use Froody::Response::Error;
 use Froody::Invoker::Remote;
 use Froody::Error qw(err);
-
 use Froody::Logger;
 
 my $logger = get_logger("froody.dispatch");
@@ -173,10 +172,57 @@ sub config {
   for (@{ $args->{urls} || [] }) { 
     $self->add_endpoint( $_, @filters );
   }
-  for (@{ $args->{modules} || [] }) {
-    $self->add_implementation( $_, @filters );
+#  warn Dumper($args->{modules}); use Data::Dumper;
+
+  # implementation has-a api_specification
+  # implementation has-a list of filters
+  
+  my %api;
+  for my $module (@{ $args->{modules} || [] }) {
+  
+    # make sure implementation is loaded for isa-checks etc.
+    $module->require;
+    $module->import();
+    
+    my ($module_api, $invoker, @filters);
+    if ($module->isa('Froody::API')) {
+        $invoker = bless {}, 'Froody::Invoker';
+        $module_api = $module;
+    } elsif ($module->isa("Froody::Implementation")) {
+        ($module_api, @filters) = $module->implements;
+        $invoker = $module->new;
+    } else {
+        Carp::confess "fatal error; $module not a Froody::API or Froody::Implementation";
+    }
+
+    push @{ $api{$module_api} }, [ $invoker, @filters ];
+  }
+  
+  @filters = _filter_to_rxs(@filters);
+
+  # Register each API _once_, making sure to bind functions  
+  foreach my $api (keys %api) {
+    $api->require;
+    $api->import();
+    my @structures = $api->load;
+    foreach my $impl (@{$api{$api}}) {
+        my ($invoker, @impl_filters) = @$impl;
+        $repository->load($invoker, \@structures, @filters, _filter_to_rxs(@impl_filters));
+        if ($invoker->isa("Froody::Implementation")) {
+          my @plugin_methods = grep { !eval { $repository->get_method($_->full_name)} }
+                               @{ $invoker->plugin_methods || [] };
+          for (@plugin_methods) {
+            # UGH
+            $repository->load($_->invoker, [$_], @filters);
+          }
+        }
+    }
   }
   return $self;
+}
+
+sub _filter_to_rxs {
+   map { Froody::Method->match_to_regex( $_ ) } @_;
 }
 
 =item add_implementation 
@@ -238,41 +284,8 @@ See L<config|/Froody::Dispatch>
 
 sub default_repository
 {
-  my $class = shift;
-  
-  # create a default repository
-  our $default_repository;
-  unless ($default_repository)
-  {
-    require Carp;
-    Carp::cluck "DEPRECATED: This is going away. Don't expect the default repo to introspect.";
-    $default_repository = Froody::Repository->new();
-    
-    # for every module already loaded that is a Froody::Implementation
-    # register it's methods in this repository
-    foreach (keys %INC)
-    {
-      # convert to module names
-      s/\.pm$//;
-      s{/}{::}g;
-      
-      if (UNIVERSAL::isa($_, "Froody::Implementation")) {
-	  # some classes aren't really implementations. In the absence
-	  # of an elegant way of doing this, we'll just use a Magic
-	  # Variable which, if set, means "don't use me as an
-	  # implementation". Slightly better than a hard-coded list of
-	  # classes, but not much.
-          no strict 'refs';
-          no warnings 'once';
-          next if ${$_."::IMPLEMENTATION_SUPERCLASS"};
-
-          $_->register_in_repository($default_repository)
-      }
-    }
-  }
-  
-  # return the default repos
-  return $default_repository;
+  require Carp;
+  Carp::confess "Don't expect the default repo to introspect.";
 }
 
 =item call_via ($invoker, $method, [@ARGS, $args])
@@ -353,27 +366,6 @@ sub load_specification {
     $repo->load($invoker, \@structures, @method_filters);
     $endpoint->{$endpoint}{loaded} = time;
   } 
-}
-
-=item reload ([$time_threshold])
-
-Reload all specifications. Optionally provide a threshold in seconds
-to indicate how long we should wait before interageting a server.
-
-=cut
-
-sub reload {
-  my ($self, $time_threshold) = @_;
-  $time_threshold ||= 0;
-  for (keys %{ $self->endpoints } ) {
-    next if $self->_endpoint_age($_) <= $time_threshold;
-    $self->load_specification($_, @{ $self->filters }); 
-  }
-}
-
-sub _endpoint_age {
-  my ($self, $name) = @_;
-  $self->endpoints->{$name}{loaded} - time
 }
 
 =back
@@ -478,8 +470,17 @@ sub dispatch {
   # Froody::Response object
   $self->_validate_response($response);
 
-  my $style = $self->error_style;
+  return $self->render_response( $response);
+}
+
+=item render_response( $response )
+
+=cut
+
+sub render_response {
+  my ($self, $response) = @_;
   
+  my $style = $self->error_style;
   my $error = $response->isa("Froody::Response::Error") ? $response : undef;
   
   if ($error && $style eq 'throw') {

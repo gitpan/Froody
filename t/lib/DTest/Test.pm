@@ -34,6 +34,10 @@ sub badhandler {
   Froody::Error->throw('test.badhandler.tripwire', "I'm just a catalyst for bad things");
 }
 
+sub badspec {
+  return { bar => [1,2,3] };
+}
+
 sub error_handler {
   my ($self,$method, $error, $data) = @_;
   die "This shouldn't kill froody" if $method->name =~ /badhandler/;

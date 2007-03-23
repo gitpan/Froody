@@ -55,7 +55,7 @@ sub call {
   my %args = ref $_[0] eq 'HASH' ? %{ $_[0] } : @_;
 
   # we want json
-  $args{_froody_type} = "json";
+  $args{_type} = "json";
 
   my $response = $self->call_raw($method, %args);
   
@@ -116,9 +116,11 @@ sub call_raw {
 
     } elsif ($ref) {
       die "can't handle type of argument '$_' (is a ".ref($args{$_}).")";
-
-    } else {
-      $args{$_} = encode_utf8( $args{$_} ) 
+    }
+  }
+  foreach (keys %args) {
+    unless (ref $args{$_}) {
+      $args{$_} = encode_utf8($args{$_});
     }
   }
 

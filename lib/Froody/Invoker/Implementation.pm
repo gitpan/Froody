@@ -38,22 +38,22 @@ sub invoke {
   # the current object (i.e. $invocation is the same as $self)
   my $invocation = $self->create_context($method->full_name, $params);
 
-  my $data = eval {
+  my $response;
+  
+  eval {
     # run the gauntlet
     # munge the arguments
     $invocation->pre_process($method, $params);
     
     # call the perl code
-    return $invocation->$func($params, $metadata);
+    my $data = $invocation->$func($params, $metadata);
 
+    # convert return shape into the reponse
+    $response = $invocation->post_process($method, $data, $metadata);
   };
-
-  my $response;
 
   if ($@) {
     $response = $invocation->error_handler($method, $@, $metadata);
-  } else {
-    $response = $invocation->post_process($method, $data, $metadata);
   }
 
   # store extra stuff in the response (e.g. cookies)

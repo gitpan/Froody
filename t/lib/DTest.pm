@@ -69,6 +69,12 @@ sub xml {
   </errors>
 </method>
 
+<method name="foo.test.badspec" needslogin="0">
+  <response>
+    <foo><bar /></foo>
+  </response>
+</method>
+
 </methods>
 <errortypes>
   <errortype code="test.error">

@@ -4,7 +4,7 @@ use warnings;
 use XML::LibXML;
 use Froody::Method;
 use Froody::ErrorType;
-use Froody::Response::Terse;
+use Froody::Response::String;
 use Froody::Logger;
 my $logger = get_logger("froody.api.xml");
 
@@ -113,11 +113,10 @@ sub load_method {
   }
   
   # work out the name of the element
-  my ($name_element) = $method_element->findnodes('./@name')
+  my $full_name = $method_element->findvalue('./@name')
     or Froody::Error->throw("froody.xml",
        "Can't find the attribute 'name' for the method definition within "
        .$method_element->toString);
-  my $full_name = $name_element->nodeValue;
 
 
   # create a new method
@@ -130,8 +129,10 @@ sub load_method {
   if ($response_element) {
     my ($structure, $example_data) = $class->_extract_structure($response_element);
     $method->structure($structure);
-    my $example = Froody::Response::Terse->new;
-    $example->_valid_content($method, $example_data);
+    my $example = Froody::Response::String->new;
+    $example->set_string("<rsp status='ok'>".$response_element->toString(1)."</rsp>");
+    $example->structure($method);
+    
     $method->example_response($example);
     weaken($example->{structure});
   } else {
@@ -164,6 +165,7 @@ sub _arguments {
   foreach my $argument_element (@argument_elements)
   {
     # pull our the attributes
+    
     my $name     = $argument_element->findvalue('./@name');
     my $optional = $argument_element->findvalue('./@optional') || 0;
     my $type     = $argument_element->findvalue('./@type') || 'text';
@@ -237,94 +239,63 @@ sub _text_only {
   return 1 if $entry->{text};
 }
 
-sub _construct_node {
-    my $child_spec = shift;
-    my $nn         = shift;
-    my $data       = shift;
-        
-    my $cdata = { };
-    my $occurrences = $child_spec->{$nn};
-    # Upgrade multi items transparently.
-    if ($occurrences  > 1 && ( !defined ($data->{$nn}) 
-        || ref $data->{$nn} ne 'ARRAY')) {
-      $data->{$nn} = [ $data->{$nn} || () ];
-    } 
-    
-    if ($occurrences > 1) {
-      push @{ $data->{$nn} }, $cdata;
-    } else {
-      $data->{$nn} = $cdata;
-    }
-    return $cdata;
-}
-
 sub _xml_to_structure_hash {
   my $node = shift;
 
   # Each element is explained in the top level results hash.
-  my ($spec, $example) = ({},{});
+  my $spec = {};
   my $name = $node->nodeName;
   $spec->{''}{elts}{ $name }++;
   
-  my @list = ( $node, $name, $example, undef );
- 
-  while( @list ) {
-    my ($node, $path, $data, $parent) = splice @list, 0, 4; 
-    
+  
+  # Create the specification using a breadth-first iteration
+  my @list = ( $node, $name );
+  my %visited;
+  for(my $i = 0; $i < @list; $i += 2 ) {
+    my ($node, $path) = @list[$i..$i+1]; 
     # Add all non text child nodes to the end of the list.
-    my @children = $node->childNodes;
     my $name = $node->nodeName;
-    my $prefix = $path ? "$path/" : "";
-    my $child_spec = $spec->{$path}{elts} = {};
     my @elements;
+
     my $has_non_text_nodes = 0;
-    for (@children) {
-        $has_non_text_nodes ||= 1 unless $_->isa('XML::LibXML::Text');
-        push @elements, $_
-            if $_->isa('XML::LibXML::Element');
+    my $child_spec = $spec->{$path}{elts} ||= {};
+
+    my $prefix = $path ? "$path/" : "";
+    for my $child ($node->childNodes) {
+        # Check if there's any text in the element we're looking at
+        if ($child->isa('XML::LibXML::Text')) {
+            next;
+        } else {
+            $has_non_text_nodes = 1;
+        }
+        my $nn = $child->nodeName;
+        # Mark each child element seen as being a child element of our spec list
+        $child_spec->{$nn}++ unless $visited{$path};
+        push @list, ($child, $prefix.$nn);
     }
     
-    for my $child ( @elements ) {
-        my $nn = $child->nodeName;
-        $child_spec->{$nn}++;
-        my $cdata = _construct_node($child_spec, $nn, $data);
-        push @list, ($child, $prefix.$nn, $cdata, $data);
+    # We've been here. Move along.
+    if ($visited{$path}++) {
+      $spec->{$path}{multi}++;
+      next;
     }
-              
+    
+    # Gather all attributes
     foreach ($node->attributes) {
       my $aname = $_->nodeName;
       $spec->{$path}{attr}{$aname}++;
-      $data->{$aname} = $_->nodeValue;
     }
     
     my $is_nonempty_root = !length($prefix) && $spec->{$path};
     $spec->{$path}{text} = 1 
       unless $has_non_text_nodes || $is_nonempty_root;
-
-    if ($spec->{$path}{text}) {
-      my $text = $node->findvalue('./text()');
-      $text =~ s/^\s+//;
-      $text =~ s/\s+$//;
-     #warn Dumper($name, $spec->{$path}, $data, $parent);
-      my $pdata = $parent->{$name};
-      if (ref $pdata eq 'HASH') {
-        if (keys %$pdata) {
-          $pdata->{-text} = $text;
-        } else {
-          $parent->{$name} = $text;
-        }
-      } elsif (ref $pdata eq 'ARRAY') {
-        #$pdata = [ grep { ref $_ } @$pdata ];
-       $data->{-text} = $text;
-      } 
-    }
   }
-
+  
   _flatten_specification($spec);
 
   # TODO: Flatten the text nodes.
 
-  return $spec, $example;
+  return $spec;
       # TODO: Handling types is a Service level detail.
 }
 
@@ -406,7 +377,7 @@ sub load_errortype  {
   
   # work out the name of the element
   my $code = $et_element->findvalue('./@code') || '';
-  Carp::cluck "no code in ".$et_element->toString(1) unless $code;
+  Carp::cluck "no code in ".$et_element->toString(1) unless defined $code;
 
   my $et = Froody::ErrorType->new;
   $et->name($code);
@@ -437,9 +408,11 @@ sub load_errortype  {
   
   $et->structure($spec);
 
-  my $example = Froody::Response::Terse->new
-                                       ->status('fail');
-  $example->_valid_content($et, $example_data);
+  my $example = Froody::Response::String->new;
+  $et_element->setNodeName("err");
+  my $text = "<rsp status='fail'>".$et_element->toString(1)."</rsp>";
+  $example->set_bytes($text);
+  $example->structure($et);
   weaken($example->{structure});
   
   $et->example_response($example);

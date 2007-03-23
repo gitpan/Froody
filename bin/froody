@@ -15,9 +15,6 @@ use Froody::Dispatch;
 use Froody::Response::Terse;
 use Froody::Response::PerlDS;
 
-my $client = Froody::Dispatch->new();
-$client->error_style('response');
-
 # process command line options;
 # darn! Neither GetOpt::Std or GetOpt::Long do what I want
 my @modules;
@@ -139,16 +136,12 @@ unless (@modules || @urls || $dump || $standalone || @ARGV && $ARGV[0] =~ m{\.re
   print STDERR "You need to use either -u or -M\n";
   pod2usage({ -exitval => 1, -verbose => 0 });
 }
-   
-# load all the modules or go bang
-foreach my $mod (@modules)
- { eval "use $mod"; die "Couldn't use module '$mod': $@\n" if $@ }
 
-# load all the urls or go bang
-foreach my $url (@urls)
-{
-  $client->add_endpoint($url);
-}
+my $client = Froody::Dispatch->config({
+  urls => \@urls,
+  modules => \@modules
+});
+$client->error_style('response');
 
 if ($dump)
 {
@@ -178,7 +171,7 @@ $time = [Time::HiRes::gettimeofday()] if $bench;
 foreach my $fish (1..$n)
 {  
   # get the response
-  my $response = $client->dispatch(method => $method, params => { @ARGV });
+  my $response = $client->call($method, { @ARGV });
   
   if ($format)
   {

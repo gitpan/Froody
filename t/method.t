@@ -13,7 +13,7 @@ use Test::More tests => 14;
 use Test::Exception;
 use Test::Differences;
 use Froody::API::XML;
-use Froody::Response::PerlDS;
+use Froody::Response::XML;
 use Froody::Response::Terse;
 use Data::Dumper;
 
@@ -33,11 +33,14 @@ my $message = <<'END';
     <argument name="shizzle" type="csv">Arguments are the shizniz</argument>
   </arguments>
   <response>
+    <book>
     <spell name="rezrov">
       <target>book</target>
       <target>stove</target>
       <description></description>
     </spell>
+    <spell/>
+    </book>
   </response>
   <errors>
   </errors>
@@ -94,27 +97,33 @@ my $structure;
 eq_or_diff($method->structure, $structure = +{
    '' => {
            'elts'  => [
-                        'spell'
+                        'book'
                       ],
            'text'  => 0,
            'multi' => 0,
            'attr'  => []
          },
-   'spell/description' => {
+   'book/spell/description' => {
                           'elts' => [],
                           'text' => 1,
                           'attr' => [],
                           multi => 0
                         },
-   'spell/target' => {
+   'book/spell/target' => {
                      'elts' => [],
                      'text' => 1,
                      'multi' => 1,
                      'attr' => []
                    },
-   'spell' => {
+   'book/spell' => {
               'elts' => [ 'description', 'target' ],
               'attr' => [ 'name' ],
+              'multi' => 1,
+              'text' => 0,
+            },
+   'book' => {
+              'elts' => [ 'spell' ],
+              'attr' => [ ],
               'multi' => 0,
               'text' => 0,
             },
@@ -122,14 +131,18 @@ eq_or_diff($method->structure, $structure = +{
 
 my $example_response = $method->example_response->as_terse->content;
 { local $TODO = "Text nodes of examples aren't flattened as they are with the walker";
-eq_or_diff($example_response, +{
-           'target' => [
-                       'book',
-                       'stove'
-                     ],
-           'name' => 'rezrov',
-           'description' => ''
-        });
+eq_or_diff($example_response, {
+        spell => [
+            {
+               'target' => [
+                           'book',
+                           'stove'
+                         ],
+               'name' => 'rezrov',
+               'description' => ''
+            }, 
+            {}
+        ]});
 }
 
 ($method) = Froody::API::XML->load_spec(_spec(<<XML));

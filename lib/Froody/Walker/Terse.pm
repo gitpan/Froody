@@ -71,9 +71,10 @@ sub validate_source {
   #use Carp; Carp::cluck;
   
   my $spec = $self->spec_for_xpath($path);
+  my $method = $self->walker->method || '<unknown>';
   
   if (!ref $source) {
-    $logger->warn("Returned unexpected text at '$path'.")
+    $logger->warn("Returned unexpected text at '$path' for structure '$method'.")
       unless $spec->{text};
     return 1;
   }
@@ -85,9 +86,8 @@ sub validate_source {
   }
   delete $keys{-text} if $spec->{text};
   
-  my $method = $self->walker->method || '<unknown>';
   for (keys %keys) {
-    $logger->warn("unknown key '$_' defined within a terse structure at '$path' for method '$method'.");
+    $logger->warn("unknown key '$_' defined within a terse structure at '$path' for structure '$method'.");
   }
   return !keys %keys;
 }

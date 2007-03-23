@@ -43,7 +43,7 @@ default repository.
 
 sub get_methods {
   use Froody::Dispatch;
-  my @methods = grep { $_->isa("Froody::Method") && $_->full_name !~ /^froody\./ }
+  my @methods = grep { $_->full_name !~ /^froody\./ }
                 Froody::Dispatch->new->repository->get_methods;
 }
 
@@ -225,7 +225,7 @@ __DATA__
   
   <h4>Example response</h4>
   <pre>
-[% ( method.example_response.render(1) || 'empty response' ) | html %]
+[% ( method.example_response.as_xml.render(1) || 'empty response' ) | html %]
   </pre>
 
 [% END %]

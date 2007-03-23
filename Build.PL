@@ -35,7 +35,8 @@ Module::Build::Kwalitee->new(
     'Logger' => 0,	 # a Fotango-specific Log4perl wrapper
     'Test::Logger' => 0, # provided by Logger
     'PPI' => 0,
-    'File::Find::Rule' => 0
+    'File::Find::Rule' => 0,
+    'JavaScript::Standalone' => 0,
   },
   build_requires => {
     'Test::More' => 0,

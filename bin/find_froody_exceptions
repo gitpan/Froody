@@ -3,8 +3,11 @@
 use warnings;
 use strict;
 
-use PPI;
-use File::Find::Rule;
+for (qw( PPI File::Find::Rule PPI::Dumper )) {
+  eval "use $_";
+  if ($@) { warn "$0 needs $_ installed: $@"; exit 1 }
+}
+
 use YAML::Syck;
  
 my @files = File::Find::Rule->or(
@@ -33,8 +36,6 @@ for my $file (@files) {
   );
   next unless $subs;
   
-  use PPI::Dumper;
-
   for my $sub (@$subs) {
   #  warn PPI::Dumper->new( $sub, whitespace => 0, comments => 0 )->string;
     for my $match (@{ $sub->find( \&find_froody_error ) || [] }) {

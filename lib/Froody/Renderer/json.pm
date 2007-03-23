@@ -25,9 +25,4 @@ use Encode;
   );
 };
 
-use Froody::Server;
-Froody::Server->content_type_for_type(
-  json => 'text/json'
-);
-
 1;

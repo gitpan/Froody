@@ -36,12 +36,13 @@ use strict;
 use CGI;
 use Scalar::Util qw( blessed );
 use Params::Validate qw(:all);
-
 use Froody::Dispatch;
 use Froody::Response;
 
 use Froody::Logger;
 my $logger = get_logger("froody.server");
+
+use Froody::Renderer::json;
 
 # XXX: move down to autoload when doing autodetect
 eval q{
@@ -139,6 +140,7 @@ Gets and sets the header for a type of server.
 
 my $h4t = {
 	xml => "text/xml; charset=utf-8",
+	json => 'text/json',
 };
 
 sub content_type_for_type {

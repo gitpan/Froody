@@ -45,7 +45,15 @@ sub pre_process {
       $_->plugin_pre_process($self, $method, $params);
   }
 
-  return $self->SUPER::pre_process($method, $params);
+  my $ret = $self->SUPER::pre_process($method, $params);
+
+  # ewwww
+  for (@{$self->plugins || []}) {
+      $_->plugin_post_pre_process($self, $method, $params)
+        if $_->can('plugin_post_pre_process');
+  }
+
+  return $ret;
 }
 
 sub post_process {

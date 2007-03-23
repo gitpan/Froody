@@ -56,7 +56,7 @@ you.)
 
 =over 4
 
-=item create_envelope(XML::Document, XML::Node (content))
+=item create_envelope( XML::Document, XML::Node (content) )
 
 You're given one last shot to change the overall format of the response.
 
@@ -195,6 +195,10 @@ sub Froody::Response::as_terse
   
   # Er...I have no idea how to do this.  quick, let's turn
   # whatever we are into xml first!
+  unless ($self->can('as_xml')) {
+    use Carp;
+    Carp::confess;
+  }
   my $xml = $self->as_xml;
 
   # create a new terse
