@@ -54,6 +54,17 @@ sub xml {
   <errors/>
 </method>
 
+<method name="foo.test.remaining" needslogin="0">
+  <description>thunktest</description>
+  <arguments> 
+    <argument name="remaining" optional="1" type="remaining" />
+  </arguments>
+  <response>
+    <value>value</value>
+  </response>
+  <errors/>
+</method>
+
 <method name="foo.test.empty" needslogin="0">
 </method>
 

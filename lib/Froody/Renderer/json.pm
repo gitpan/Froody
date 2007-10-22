@@ -2,7 +2,7 @@ package Froody::Renderer::json;
 use strict;
 use warnings;
 
-use JSON::Syck;
+use JSON::XS qw( to_json );
 
 use Froody::Response;
 use Froody::Response::Terse;
@@ -19,10 +19,9 @@ use Encode;
 # and renders it with JSON
 *Froody::Response::Terse::render_json = sub {
   my $self = shift;
-  local $JSON::Syck::ImplicitUnicode = 1; # bah.
-  return Encode::encode_utf8( # BAH
-    JSON::Syck::Dump({ stat => $self->status, data => $self->content })
-  );
+  my $callback = $self->callback;
+  my $bytes = to_json( { stat => $self->status, data => $self->content } );
+  return $callback ? "$callback( $bytes )" : $bytes;
 };
 
 1;

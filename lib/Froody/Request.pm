@@ -37,7 +37,7 @@ The type of response wanted.  By default this returns xml.
 
 =cut
 
-__PACKAGE__->mk_accessors(qw( method params));
+__PACKAGE__->mk_accessors(qw( method params callback ));
 
 sub type {
    my $self = shift;

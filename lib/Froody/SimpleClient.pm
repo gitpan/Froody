@@ -15,7 +15,7 @@ use base qw( Class::Accessor::Chained::Fast );
 __PACKAGE__->mk_accessors(qw( endpoint ));
 
 use LWP::UserAgent;
-use JSON::Syck;
+use JSON::XS qw( from_json );
 use HTTP::Request::Common;
 use Encode qw( encode_utf8 );
 
@@ -58,12 +58,8 @@ sub call {
   $args{_type} = "json";
 
   my $response = $self->call_raw($method, %args);
-  
   # parse as Frooy/JSON response
-  my $data = eval {
-    local $JSON::Syck::ImplicitUnicode = 1; # bah.
-    JSON::Syck::Load( $response );
-  };
+  my $data = eval { from_json( $response ) };
   unless (ref $data eq "HASH") {
     die "Error parsing ".$response.": $@";
   }
@@ -118,16 +114,16 @@ sub call_raw {
       die "can't handle type of argument '$_' (is a ".ref($args{$_}).")";
     }
   }
-  foreach (keys %args) {
-    unless (ref $args{$_}) {
-      $args{$_} = encode_utf8($args{$_});
-    }
-  }
+  
+  my @args = %args;
+  @args = map { ref($_) ? $_ : Encode::encode('utf-8', $_) } @args;
+  %args = @args;
 
   # make the request
   my $request = POST( $self->endpoint,
     Content_Type => 'form-data',
     Content => [ method => $method, %args ] );
+
   my $response = $self->{ua}->request( $request );
 
   Froody::Error->throw('froody.invoke.remote', 'Bad response from server: '. $response->status_line)

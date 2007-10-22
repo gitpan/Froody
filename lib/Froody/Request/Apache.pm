@@ -33,7 +33,9 @@ sub new {
 
   my $type = delete $vars->{'_type'} || delete $vars->{'_froody_type'};
   $self->type($type);
-  
+  if ($type and $type eq 'json') {
+    $self->callback( delete $vars->{"_json_callback"} );
+  }
   $self->params($vars);
   
   return $self;
@@ -54,7 +56,9 @@ sub get_params {
   my %vars = map {
     my @results = $ar->param($_);
     @results = map { Encode::decode("utf-8", $_, 1) } @results;
-    ( $_ => scalar(@results) > 1 ? [ @results ] : $results[0] );
+    ( Encode::decode("utf-8", $_, 1) => scalar(@results) > 1 ? [ @results ] : $results[0] );
+  } map {
+    ref($_) || s/\xef\xbb\xbf//; $_; # remove BOM from strings
   } $ar->param();
 
   foreach my $upload ( $ar->upload ) {

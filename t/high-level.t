@@ -5,7 +5,7 @@
 # then make sure that those files exist and are what we expect.
 ############################################################################
 
-use Test::More tests => 39;
+use Test::More tests => 50;
 
 use warnings;
 use strict;
@@ -14,6 +14,7 @@ use Test::Differences;
 use lib 't/lib';
 use DTest;
 use LWP::Simple ();
+use JSON::XS qw( from_json );
 
 use Froody::Server::Test;
 use Froody::SimpleClient;
@@ -22,9 +23,16 @@ ok( Froody::Server::Test->start( "DTest::Test" ), 'got interface to client');
 ok( my $real_client = Froody::Server::Test->client, 'got interface to client');
 
 like( LWP::Simple::get(Froody::Server::Test->endpoint . '?foo=1'),
-	qr/froody.invoke.nomethod/, 'get a froody error');
+  qr/froody.invoke.nomethod/, 'get a froody error');
 
-is $real_client->repository->get_methods, 14, "Right number of methods.";
+# call the endpoint with invalid utf8 as a param
+like( LWP::Simple::get(Froody::Server::Test->endpoint . "?method=%e9"),
+  qr/Some paramaters were not valid utf8/, 'get a utf8 froody error');
+
+like( LWP::Simple::get(Froody::Server::Test->endpoint . "?method=%ef%bb%bf%c3%a9"), # e-acute with bom
+  qr/Method 'é' not found/, "no utf-8 problems with BOM");
+
+is $real_client->repository->get_methods, 15, "Right number of methods.";
 
 eq_or_diff [ sort map { $_->full_name } $real_client->repository->get_errortypes],  
            [ '',  'perl.methodcall.param','test.error',],
@@ -68,6 +76,11 @@ for my $client ( $real_client, $simple_client ) {
     $answer = $client->call( 'foo.test.empty' );
     is_deeply $answer, {}, "We get empty response back.";
   } 'can make call';
+
+
+  # test unicode arg names reach remaining type properly.
+  my $unicode = $client->call( 'foo.test.remaining', "t\x{e9}st" => "bar" );
+  is( $unicode, 4, "unicode remaining param" ) or die;
   
   throws_ok {
     $answer = $client->call('foo.foo.bar');
@@ -98,7 +111,29 @@ for my $client ( $real_client, $simple_client ) {
   isa_ok $@, 'Froody::Error';
 }
 
+
+ok( my $json = LWP::Simple::get( Froody::Server::Test->endpoint
+  .'?method=foo.test.remaining&test=bar&_type=json' ),
+"Got JSON response");
+ok( my $data = from_json( $json ), "response is JSON" );
+is( $data->{data}, 4, "can parse as json" );
+
+ok( $json = LWP::Simple::get( Froody::Server::Test->endpoint
+  .'?method=foo.test.remaining&test=bar&_type=json&_json_callback=flibble' ),
+"Got JSON response");
+ok( $json =~ s/^flibble\((.*)\)/$1/, "callback works") or die $json;
+ok( $data = from_json( $json ), "response is JSON" );
+
+ok( $json = LWP::Simple::get( Froody::Server::Test->endpoint
+  .'?method=test.error&test=bar&_type=json&_json_callback=flibble' ),
+"Got JSON response");
+#ok( $json =~ s/^flibble\((.*)\)/$1/, "callback works") or die $json;
+#ok( $data = from_json( $json ), "response is JSON" );
+
+
+
+# keep this test last, as calling this method hangs the (single-threaded)
+# server
 throws_ok {
   $simple_client->call( 'foo.test.sloooow' );
 } qr/froody.invoke.remote/, 'we time out really quickly';
-

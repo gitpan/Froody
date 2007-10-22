@@ -84,9 +84,11 @@ sub xml
 sub render
 {
   my $self = shift;
-  my $string = $self->xml->toString(@_);
-  my $encoded = Encode::encode("utf-8", $string);
-  return $encoded;
+  my $output = $self->xml->toString(@_);
+  if ($XML::LibXML::VERSION < 1.63) {
+    $output = encode_utf8( $output );
+  }
+  return $output;
 }
 
 # status is documented

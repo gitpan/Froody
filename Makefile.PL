@@ -15,6 +15,7 @@ WriteMakefile
                            'Email::Valid' => 0,
                            'Test::XML' => 0,
                            'File::Spec' => 0,
+                           'JSON::XS' => 0,
                            'HTTP::Server::Simple' => 0,
                            'Error' => '0.15',
                            'Class::Accessor::Chained::Fast' => 0,

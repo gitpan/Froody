@@ -44,4 +44,9 @@ sub error_handler {
   return $self->SUPER::error_handler($method, $error, $data);
 }
 
+sub remaining {
+  my ($self, $args) = @_;
+  return length( [ keys %{ $args->{remaining} } ]->[0] );
+}
+
 1;

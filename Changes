@@ -1,3 +1,34 @@
+42.042
+
+  * Work around broken behaviour in old versions of XML::LibXML.
+  * add json callback hook, and test json response.
+  * Use JSON::XS, not JSON::Syck - we prefer it because it does Unicode
+    correctly among other things.
+  * trim BOM from paramters.
+  * also decode paramter names from utf-8.
+  * catch non-utf8 params better.
+
+42.034
+  * Run some tests only if certain optional modules are installed.
+  * Better froodydoc (written using JS::Standalone)
+  * Fix irritating pod::coverage syntax glitch
+  * don't 500 on errors in the post_process handler. Specifically, xml shape errors.
+  * Make sure we UTF-8 encode all code paths.
+  * Update the bin/froody script to work with modern calling techniques.
+  * You can now get at the params _after_ argument chjecking, but before dispatch.
+  * All froody servers should support JSON response types.
+  * kill deprecated functionality
+  * kill untested (and therefore unnused, right?) method
+  * Do not load the spec many times. This saves us a _lot_ of time on startup.
+  * Fixing the error shape bug.
+  * Use findvalue() instead of findnodes/nodeValue gave us an observed 20%
+    improvement in loading a particular API module used internally.
+  * Reduced copy overhead on walking the reflection structures
+  * Refactoring extraction of the XML structure by adding another
+    pass, but simplifying the node construction. Also, this fixes a
+    regression where last defined node in the example spec wins,
+    rather than the first, which was the old behaviour.
+
 42.011
   * Amend arguments to allow argument type aliases
   * Fix the documentation for the Walker class.

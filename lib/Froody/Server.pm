@@ -67,19 +67,38 @@ a request, and dispatches it. Replies to the request with the XML response.
 sub dispatch {
   my $class = shift;
 
+  my $response;
+
   my $server = $class->server_class->new;
-  my $request = $server->request_class->new;
-  my $response = $class->dispatcher->dispatch(
-      method => $request->method,
-      params => $request->params || {},
-  );
-  
+  my $request = eval { $server->request_class->new };
+  if ($@) {
+    if ($@ =~ /does not map to Unicode/) {
+      # CGI / apache params were not unicode
+      my $e = $@;
+      my $dispatcher = $class->dispatcher;
+      $response = $dispatcher->error_class->from_exception(
+        Froody::Error->new('perl.methodcall.param', 'Some paramaters were not valid utf8'),
+        $dispatcher->repository
+      );
+
+    } else {
+      # some other error
+      Carp::confess($@);
+    }
+  } else {
+    $response = $class->dispatcher->dispatch(
+        method => $request->method,
+        params => $request->params || {},
+    );
+  }
+
   # lookup what type of output the request asked for then send
   # the correct header and response rendered for that type
   my $type = $request->type;
   
   $server->send_header($response, $class->content_type_for_type($type));
   
+  $response->callback( $request->callback );
   my $render_method = "render_$type";
   my $bytes = $response->$render_method;
   $server->send_body($bytes);

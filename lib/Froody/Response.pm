@@ -11,7 +11,7 @@ use Scalar::Util qw(blessed);
 use Froody::Logger;
 my $logger = get_logger('froody.response');
 
-__PACKAGE__->mk_accessors(qw( cookie ));
+__PACKAGE__->mk_accessors(qw( cookie callback ));
 
 =head1 NAME
 

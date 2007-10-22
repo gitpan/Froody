@@ -42,31 +42,47 @@ use Froody::Server;
 sub handle_request
 {
   my ($self, $cgi) = @_;
- 
-  # what are we asking for?
-  my $request = Froody::Request::CGI->new($cgi);
-  my $type = $request->type;
-  
-  # dispatch 
+
   $self->dispatcher->error_style("response");
-  my $response = eval {  #Don't allow the server to die on unhandled exceptions.
-    $self->dispatcher->dispatch(
-        method => $request->method,
-        params => $request->params,
-    );
-  }; #
-  
-  unless ($@) {
-      # send the data back to the browser
-      my $method = "render_$type";
-      return $self->_send_bytes(
-        "200 OK",
-        Froody::Server->content_type_for_type($type), 
-        $response->$method
+
+  my $response;
+
+  # what are we asking for?
+  my $request = eval { Froody::Request::CGI->new($cgi) };
+  if ($@) {
+    if ($@ =~ /does not map to Unicode/) {
+      # CGI / apache params were not unicode
+      my $e = $@;
+      my $dispatcher = $self->dispatcher;
+      $response = $dispatcher->error_class->from_exception(
+        Froody::Error->new('perl.methodcall.param', 'Some paramaters were not valid utf8'),
+        $dispatcher->repository
       );
+
+    } else {
+      # some other error
+      Carp::confess($@);
+    }
   } else {
-    $self->_send_bytes("500 Server Error", "text/plain", "$@");
+    $response = eval { $self->dispatcher->dispatch(
+        method => $request->method,
+        params => $request->params || {},
+    ) };
+    if ($@) {
+      $self->_send_bytes("500 Server Error", "text/plain", "$@");
+      return;
+    }
   }
+
+  my $type = $request ? $request->type : 'xml';
+  # send the data back to the browser
+  my $method = "render_$type";
+  $response->callback( $request->callback ) if $request;
+  return $self->_send_bytes(
+    "200 OK",
+    Froody::Server->content_type_for_type($type), 
+    $response->$method
+  );
 }
 
 =head2 config

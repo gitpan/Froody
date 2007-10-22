@@ -48,7 +48,7 @@ sub invoke
     } elsif ($arg_data->{type}[0] eq 'csv' and ref($value) eq 'ARRAY') {
       $value = join(",", @$value);
     }
-    $params->{$key} = ref $value ? $value : encode_utf8($value);
+    $params->{ encode_utf8( $key ) } = ref $value ? $value : encode_utf8($value);
   }
   $params->{method} = $method->full_name; 
 

@@ -8,6 +8,7 @@ our $VERSION = "0.01";
 
 use Storable;
 use Froody::Error;
+use Encode qw( encode_utf8 );
 
 =head1 NAME
 
@@ -107,10 +108,13 @@ sub raw_render()
   
   my $doc = $self->_to_xml($self->content);
   
-  # get the XML string, and encode to UTF8 octets
   # pass in 1 here to get nice whitespace
-  my $content = $doc->toString(1);
-  return Encode::encode("utf-8", $content);
+  my $output = $doc->toString(1);
+  
+  if ($XML::LibXML::VERSION < 1.63) {
+    $output = encode_utf8( $output );
+  }
+  return $output;
 }
 
 =item as_xml

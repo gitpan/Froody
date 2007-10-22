@@ -5,7 +5,9 @@
 # Module::Build.  It simply adds the dependencies for
 # Module::Build::Kwalitee's tests.
 
-package Module::Build::Kwalitee;
+package # Hide from CPAN
+    Module::Build::Kwalitee;
+
 use strict;
 use warnings;
 

@@ -25,14 +25,16 @@ sub new {
 
   my $self = $class->SUPER::new(@_);
 
-  my %vars = $cgi->Vars();
+  my @vars = $cgi->Vars();
+  my %vars = map { ref($_) || s/\xef\xbb\xbf//; $_ } @vars; # remove BOM from strings
 
   my $method = delete $vars{method} || "";
+  $method = Encode::decode('utf-8', $method, 1 );
   $self->method($method);
 
-  my $type = delete $vars{'_type'} || delete $vars{'_froody_type'};
+  my $type = Encode::decode('utf-8', delete $vars{'_type'} || delete $vars{'_froody_type'}, 1 );
   $self->type($type);
-    
+  
   for (keys %vars) {
 
     # XXX: multiple uploads???
@@ -52,14 +54,14 @@ sub new {
       $vars{$_} = \@vals if (@vals > 1);
       
       # decopde params from unicode
-      $vars{$_} = Encode::decode_utf8( $vars{$_}, 1 );
+      my $value = Encode::decode("utf-8", delete $vars{$_}, 1 );
+      my $pname = Encode::decode("utf-8", $_, 1 );
+      $vars{ $pname } = $value;
     }
   }
 
-  # read cookies into the request as well.
-  for ($cgi->cookie()) {
-    next unless $_ eq 'cookie_session';
-    $vars{$_} = $cgi->cookie($_);
+  if ($type and $type eq 'json') {
+    $self->callback( delete $vars{"_json_callback"} );
   }
 
   $self->params(\%vars);
