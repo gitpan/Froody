@@ -1,4 +1,9 @@
-42.042
+42.041_2
+
+  * Use Class::Accessor::Chained::Fast instead of Class::Accessor in
+    Froody::Implementation.
+
+42.041_1
 
   * Work around broken behaviour in old versions of XML::LibXML.
   * add json callback hook, and test json response.

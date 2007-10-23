@@ -6,7 +6,7 @@ use warnings;
 use base qw(
   Froody::Invoker::Implementation  
   Class::Data::Inheritable
-  Class::Accessor
+  Class::Accessor::Chained::Fast
 );
 
 use Scalar::Util qw(blessed);
